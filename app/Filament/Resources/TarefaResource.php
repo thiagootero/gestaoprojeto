@@ -7,7 +7,6 @@ use App\Models\Meta;
 use App\Models\Polo;
 use App\Models\Projeto;
 use App\Models\Tarefa;
-use App\Models\User;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -87,15 +86,6 @@ class TarefaResource extends Resource
                             ->required()
                             ->rows(3)
                             ->columnSpanFull(),
-
-                        Forms\Components\TextInput::make('responsavel')
-                            ->label('Responsável (texto)'),
-
-                        Forms\Components\Select::make('responsavel_user_id')
-                            ->label('Responsável (usuário)')
-                            ->options(fn () => User::where('ativo', true)->pluck('name', 'id'))
-                            ->searchable()
-                            ->preload(),
 
                         Forms\Components\DatePicker::make('data_inicio')
                             ->label('Data de Início')

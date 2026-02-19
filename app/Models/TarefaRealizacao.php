@@ -11,6 +11,7 @@ class TarefaRealizacao extends Model
 
     protected $fillable = [
         'tarefa_id',
+        'tarefa_ocorrencia_id',
         'user_id',
         'comentario',
     ];
@@ -18,6 +19,11 @@ class TarefaRealizacao extends Model
     public function tarefa(): BelongsTo
     {
         return $this->belongsTo(Tarefa::class);
+    }
+
+    public function ocorrencia(): BelongsTo
+    {
+        return $this->belongsTo(TarefaOcorrencia::class, 'tarefa_ocorrencia_id');
     }
 
     public function user(): BelongsTo

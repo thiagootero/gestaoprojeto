@@ -13,6 +13,13 @@ class EtapaPrestacao extends Model
     protected $fillable = [
         'origem',
         'projeto_id',
+        'prestacao_grupo_id',
+        'recorrencia_tipo',
+        'recorrencia_inicio',
+        'recorrencia_dia',
+        'recorrencia_repeticoes',
+        'ate_final_projeto',
+        'datas_personalizadas',
         'projeto_financiador_id',
         'numero_etapa',
         'descricao',
@@ -35,6 +42,9 @@ class EtapaPrestacao extends Model
             'periodo_fim' => 'date',
             'data_envio' => 'date',
             'validado_em' => 'datetime',
+            'recorrencia_inicio' => 'date',
+            'ate_final_projeto' => 'boolean',
+            'datas_personalizadas' => 'array',
         ];
     }
 

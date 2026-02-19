@@ -1,8 +1,9 @@
 <?php
 
-namespace App\Filament\Resources\ProjetoResource\Pages;
+namespace App\Filament\Pages;
 
-use App\Filament\Resources\ProjetoResource;
+use App\Models\Polo;
+use App\Models\Projeto;
 use App\Models\Tarefa;
 use App\Models\TarefaRealizacao;
 use App\Notifications\TarefaAprovada;
@@ -15,134 +16,35 @@ use Filament\Actions\Concerns\InteractsWithActions;
 use Filament\Actions\Contracts\HasActions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
-use Filament\Resources\Pages\Concerns\InteractsWithRecord;
-use Filament\Resources\Pages\Page;
+use Filament\Pages\Page;
 use Illuminate\Support\Facades\Notification as LaravelNotification;
 use Illuminate\Support\HtmlString;
 
-class CronogramaOperacional extends Page implements HasActions
+class MinhasTarefas extends Page implements HasActions
 {
-    use InteractsWithRecord;
-    use InteractsWithActions {
-        InteractsWithActions::afterActionCalled insteadof InteractsWithRecord;
-        InteractsWithActions::configureAction insteadof InteractsWithRecord;
-        InteractsWithRecord::getMountedActionFormModel insteadof InteractsWithActions;
-    }
+    use InteractsWithActions;
 
-    protected static string $resource = ProjetoResource::class;
+    protected static string $view = 'filament.pages.minhas-tarefas';
 
-    protected static string $view = 'filament.resources.projeto-resource.pages.cronograma-operacional';
+    protected static ?string $title = 'Minhas Tarefas';
 
-    protected static ?string $title = 'Cronograma de Metas/Tarefas';
+    protected static ?string $navigationIcon = 'heroicon-o-clipboard-document-check';
 
-    protected static ?string $navigationIcon = 'heroicon-o-table-cells';
+    protected static ?int $navigationSort = -1;
 
-    public function getBreadcrumbs(): array
-    {
-        return [
-            ProjetoResource::getUrl('index') => 'Projetos',
-            ProjetoResource::getUrl('view', ['record' => $this->record]) => $this->record->nome,
-            static::getTitle(),
-        ];
-    }
+    protected static ?string $slug = 'minhas-tarefas';
 
     public ?int $year = null;
     public ?string $month = null;
-    public ?int $metaId = null;
+    public ?string $statusFilter = null;
+    public ?int $projetoFilter = null;
 
-    public function mount(int | string $record): void
+    public function mount(): void
     {
-        $this->record = $this->resolveRecord($record);
-        $this->year = (int) request()->query('year', $this->record->data_inicio?->year ?? now()->year);
+        $this->year = (int) request()->query('year', now()->year);
         $this->month = request()->query('month');
-        $this->metaId = request()->query('meta_id') ? (int) request()->query('meta_id') : null;
-        $this->record->load([
-            'polos',
-            'metas.tarefas.polo',
-            'metas.tarefas.responsaveis',
-            'metas.tarefas.ocorrencias',
-            'metas.tarefas.realizacoes',
-            'metas.tarefas.validadoPorUser',
-        ]);
-    }
-
-    public function getAnos(): array
-    {
-        $inicio = $this->record->data_inicio?->year ?? now()->year;
-        $fim = $this->getFimCronograma()->year;
-
-        if ($fim < $inicio) {
-            $fim = $inicio;
-        }
-
-        return range($inicio, $fim);
-    }
-
-    public function getMeses(): array
-    {
-        $ano = $this->year ?? now()->year;
-        $inicioProjeto = $this->record->data_inicio?->copy()->startOfMonth() ?? Carbon::create($ano, 1, 1);
-        $fimProjeto = $this->getFimCronograma()->copy()->startOfMonth();
-
-        $inicio = Carbon::create($ano, 1, 1)->startOfMonth();
-        $fim = Carbon::create($ano, 12, 1)->startOfMonth();
-
-        if ($inicioProjeto->gt($inicio)) {
-            $inicio = $inicioProjeto->copy();
-        }
-        if ($fimProjeto->lt($fim)) {
-            $fim = $fimProjeto->copy();
-        }
-
-        if ($fim->lt($inicio)) {
-            $fim = $inicio->copy();
-        }
-
-        $meses = [];
-        $cursor = $inicio->copy();
-        while ($cursor->lte($fim)) {
-            $meses[] = [
-                'key' => $cursor->format('Y-m'),
-                'label' => mb_strtoupper($cursor->translatedFormat('M')),
-            ];
-            $cursor->addMonth();
-        }
-
-        if ($this->month) {
-            $meses = array_values(array_filter($meses, fn ($m) => $m['key'] === $this->month));
-        }
-
-        return $meses;
-    }
-
-    public function getMesesOptions(): array
-    {
-        $ano = $this->year ?? now()->year;
-        $inicioProjeto = $this->record->data_inicio?->copy()->startOfMonth() ?? Carbon::create($ano, 1, 1);
-        $fimProjeto = $this->getFimCronograma()->copy()->startOfMonth();
-
-        $inicio = Carbon::create($ano, 1, 1)->startOfMonth();
-        $fim = Carbon::create($ano, 12, 1)->startOfMonth();
-
-        if ($inicioProjeto->gt($inicio)) {
-            $inicio = $inicioProjeto->copy();
-        }
-        if ($fimProjeto->lt($fim)) {
-            $fim = $fimProjeto->copy();
-        }
-
-        if ($fim->lt($inicio)) {
-            $fim = $inicio->copy();
-        }
-
-        $meses = [];
-        $cursor = $inicio->copy();
-        while ($cursor->lte($fim)) {
-            $meses[$cursor->format('Y-m')] = $cursor->translatedFormat('F Y');
-            $cursor->addMonth();
-        }
-
-        return $meses;
+        $this->statusFilter = request()->query('status');
+        $this->projetoFilter = request()->query('projeto_id') ? (int) request()->query('projeto_id') : null;
     }
 
     private function getPoloIdsPermitidos(): ?array
@@ -154,235 +56,151 @@ class CronogramaOperacional extends Page implements HasActions
 
         if ($user->isCoordenadorPolo() || $user->isDiretorOperacoes()) {
             $poloIds = $user->polos->pluck('id');
-            $geralIds = \App\Models\Polo::where('is_geral', true)->pluck('id');
+            $geralIds = Polo::where('is_geral', true)->pluck('id');
             return $poloIds->merge($geralIds)->unique()->values()->all();
         }
 
         return null;
     }
 
-    public function getLinhas(): array
-    {
-        $meses = $this->getMeses();
-        $mesKeys = array_map(fn ($m) => $m['key'], $meses);
-
-        $metas = $this->record->metas;
-        if ($this->metaId) {
-            $metas = $metas->where('id', $this->metaId);
-        }
-
-        $poloIdsPermitidos = $this->getPoloIdsPermitidos();
-
-        return $metas->map(function ($meta) use ($mesKeys, $poloIdsPermitidos) {
-            $tarefas = $meta->tarefas
-                ->when($poloIdsPermitidos !== null, function ($collection) use ($poloIdsPermitidos) {
-                    return $collection->whereIn('polo_id', $poloIdsPermitidos);
-                })
-                ->sortBy('data_fim')
-                ->values()
-                ->map(function ($tarefa) use ($mesKeys) {
-                $marcacoes = array_fill_keys($mesKeys, '');
-
-                $inicio = $tarefa->data_inicio;
-                $fim = $tarefa->data_fim ?? $tarefa->data_inicio;
-                $ocorrencias = $tarefa->ocorrencias;
-
-                if ($ocorrencias->isNotEmpty()) {
-                    foreach ($ocorrencias as $ocorrencia) {
-                        $key = $ocorrencia->data_fim->format('Y-m');
-                        if (array_key_exists($key, $marcacoes)) {
-                            $marcacoes[$key] = 'X';
-                        }
-                    }
-                } elseif ($inicio && $fim) {
-                    $cursor = $inicio->copy()->startOfMonth();
-                    $end = $fim->copy()->startOfMonth();
-                    while ($cursor->lte($end)) {
-                        $key = $cursor->format('Y-m');
-                        if (array_key_exists($key, $marcacoes)) {
-                            $marcacoes[$key] = 'X';
-                        }
-                        $cursor->addMonth();
-                    }
-                } elseif ($fim) {
-                    $key = $fim->format('Y-m');
-                    if (array_key_exists($key, $marcacoes)) {
-                        $marcacoes[$key] = 'X';
-                    }
-                }
-
-                $responsaveis = $tarefa->responsaveis->pluck('name')->filter()->values();
-                $responsavelTexto = $responsaveis->isNotEmpty()
-                    ? $responsaveis->join(', ')
-                    : ($tarefa->responsavel ?? '-');
-
-                $periodo = $inicio && $fim
-                    ? $inicio->format('d/m/Y') . ' - ' . $fim->format('d/m/Y')
-                    : ($fim?->format('d/m/Y') ?? '-');
-
-                if ($ocorrencias->isNotEmpty()) {
-                    $periodo = $ocorrencias->min('data_fim')->format('d/m/Y')
-                        . ' - ' . $ocorrencias->max('data_fim')->format('d/m/Y');
-                }
-
-                return [
-                    'descricao' => $tarefa->descricao,
-                    'marcacoes' => $marcacoes,
-                    'periodo' => $periodo,
-                    'responsavel' => $responsavelTexto ?: '-',
-                    'como_fazer' => $tarefa->como_fazer ?? '-',
-                    'polo' => $tarefa->polo?->nome ?? 'Geral',
-                ];
-            });
-
-            return [
-                'meta' => $meta->descricao,
-                'tarefas' => $tarefas,
-            ];
-        })->toArray();
-    }
-
-    private function getFimCronograma(): Carbon
-    {
-        $fimProjeto = $this->record->data_encerramento?->copy();
-
-        $maxTarefa = $this->record->metas
-            ->flatMap(fn ($meta) => $meta->tarefas)
-            ->flatMap(function ($tarefa) {
-                $datas = [];
-                if ($tarefa->data_inicio) {
-                    $datas[] = $tarefa->data_inicio;
-                }
-                if ($tarefa->data_fim) {
-                    $datas[] = $tarefa->data_fim;
-                }
-                if ($tarefa->ocorrencias->isNotEmpty()) {
-                    foreach ($tarefa->ocorrencias as $ocorrencia) {
-                        if ($ocorrencia->data_fim) {
-                            $datas[] = $ocorrencia->data_fim;
-                        }
-                    }
-                }
-                return $datas;
-            })
-            ->filter()
-            ->max();
-
-        if (!$fimProjeto && $maxTarefa) {
-            return $maxTarefa->copy();
-        }
-        if (!$fimProjeto) {
-            return now();
-        }
-        if ($maxTarefa && $maxTarefa->gt($fimProjeto)) {
-            return $maxTarefa->copy();
-        }
-
-        return $fimProjeto->copy();
-    }
-
     public function getTarefasMensal(): array
     {
-        $meses = $this->getMeses();
-        $mesKeys = array_map(fn ($m) => $m['key'], $meses);
-        $buckets = array_fill_keys($mesKeys, []);
-        $semData = [];
-
-        $metas = $this->record->metas;
-        if ($this->metaId) {
-            $metas = $metas->where('id', $this->metaId);
-        }
+        $query = Tarefa::query()
+            ->with([
+                'meta.projeto',
+                'polo',
+                'responsaveis',
+                'ocorrencias',
+                'realizacoes',
+                'validadoPorUser',
+            ]);
 
         $poloIdsPermitidos = $this->getPoloIdsPermitidos();
+        if ($poloIdsPermitidos !== null) {
+            $query->whereIn('polo_id', $poloIdsPermitidos);
+        }
 
-        foreach ($metas as $meta) {
-            $tarefas = $meta->tarefas;
-            if ($poloIdsPermitidos !== null) {
-                $tarefas = $tarefas->whereIn('polo_id', $poloIdsPermitidos);
+        if ($this->projetoFilter) {
+            $query->whereHas('meta', fn ($q) => $q->where('projeto_id', $this->projetoFilter));
+        }
+
+        $tarefas = $query->get();
+
+        $buckets = [];
+        $semData = [];
+
+        foreach ($tarefas as $tarefa) {
+            $meta = $tarefa->meta;
+            $projeto = $meta?->projeto;
+            if (!$projeto) {
+                continue;
             }
 
-            foreach ($tarefas as $tarefa) {
-                $inicio = $tarefa->data_inicio;
-                $fim = $tarefa->data_fim ?? $tarefa->data_inicio;
-                $ocorrencias = $tarefa->ocorrencias;
+            $inicio = $tarefa->data_inicio;
+            $fim = $tarefa->data_fim ?? $tarefa->data_inicio;
+            $ocorrencias = $tarefa->ocorrencias;
 
-                $mesesTarefa = [];
-                $prazoPorMes = [];
-                $ocorrenciaPorMes = [];
+            $mesesTarefa = [];
+            $prazoPorMes = [];
+            $ocorrenciaPorMes = [];
 
-                if ($ocorrencias->isNotEmpty()) {
-                    $ocorrencias
-                        ->groupBy(fn ($o) => $o->data_fim->format('Y-m'))
-                        ->each(function ($items, $key) use (&$mesesTarefa, &$prazoPorMes, &$ocorrenciaPorMes) {
-                            $mesesTarefa[] = $key;
-                            $prazoPorMes[$key] = $items->min('data_fim');
-                            $ocorrencia = $items->sortBy('data_fim')->first();
-                            $ocorrenciaPorMes[$key] = $ocorrencia;
-                        });
-                } elseif ($fim) {
-                    $key = $fim->format('Y-m');
-                    $mesesTarefa[] = $key;
-                    $prazoPorMes[$key] = $fim;
-                } elseif ($inicio) {
-                    $key = $inicio->format('Y-m');
-                    $mesesTarefa[] = $key;
-                    $prazoPorMes[$key] = $inicio;
-                }
+            if ($ocorrencias->isNotEmpty()) {
+                $ocorrencias
+                    ->groupBy(fn ($o) => $o->data_fim->format('Y-m'))
+                    ->each(function ($items, $key) use (&$mesesTarefa, &$prazoPorMes, &$ocorrenciaPorMes) {
+                        $mesesTarefa[] = $key;
+                        $prazoPorMes[$key] = $items->min('data_fim');
+                        $ocorrencia = $items->sortBy('data_fim')->first();
+                        $ocorrenciaPorMes[$key] = $ocorrencia;
+                    });
+            } elseif ($fim) {
+                $key = $fim->format('Y-m');
+                $mesesTarefa[] = $key;
+                $prazoPorMes[$key] = $fim;
+            } elseif ($inicio) {
+                $key = $inicio->format('Y-m');
+                $mesesTarefa[] = $key;
+                $prazoPorMes[$key] = $inicio;
+            }
 
-                $responsaveis = $tarefa->responsaveis->pluck('name')->filter()->values();
-                $responsavelTexto = $responsaveis->isNotEmpty()
-                    ? $responsaveis->join(', ')
-                    : ($tarefa->responsavel ?? '-');
+            $responsaveis = $tarefa->responsaveis->pluck('name')->filter()->values();
+            $responsavelTexto = $responsaveis->isNotEmpty()
+                ? $responsaveis->join(', ')
+                : ($tarefa->responsavel ?? '-');
 
-                $temHistorico = $tarefa->realizacoes->count() > 0 || $tarefa->observacoes || $tarefa->validadoPorUser;
+            $temHistorico = $tarefa->realizacoes->count() > 0 || $tarefa->observacoes || $tarefa->validadoPorUser;
 
-                if (empty($mesesTarefa)) {
-                    $semData[] = [
-                        'id' => $tarefa->id,
-                        'meta' => $meta->descricao,
-                        'descricao' => $tarefa->descricao,
-                        'prazo' => null,
-                        'responsavel' => $responsavelTexto ?: '-',
-                        'polo' => $tarefa->polo?->nome ?? 'Geral',
-                        'status' => $tarefa->status,
-                        'status_label' => $tarefa->status_label,
-                        'status_color' => $tarefa->status_color,
-                        'status_normalizado' => $tarefa->getStatusNormalizado(),
-                        'tem_historico' => $temHistorico,
-                    ];
-                    continue;
-                }
+            if (empty($mesesTarefa)) {
+                $semData[] = [
+                    'id' => $tarefa->id,
+                    'meta' => $meta->descricao,
+                    'descricao' => $tarefa->descricao,
+                    'prazo' => null,
+                    'responsavel' => $responsavelTexto ?: '-',
+                    'polo' => $tarefa->polo?->nome ?? 'Geral',
+                    'status' => $tarefa->status,
+                    'status_label' => $tarefa->status_label,
+                    'status_color' => $tarefa->status_color,
+                    'status_normalizado' => $tarefa->getStatusNormalizado(),
+                    'tem_historico' => $temHistorico,
+                    'ocorrencia_id' => null,
+                    'projeto_nome' => $projeto->nome,
+                    'projeto_id' => $projeto->id,
+                ];
+                continue;
+            }
 
-                foreach (array_unique($mesesTarefa) as $key) {
-                    if (array_key_exists($key, $buckets)) {
-                        $ocorrencia = $ocorrenciaPorMes[$key] ?? null;
-                        $status = $ocorrencia ? $ocorrencia->status : $tarefa->status;
-                        $statusLabel = $ocorrencia ? $ocorrencia->status_label : $tarefa->status_label;
-                        $statusColor = $ocorrencia ? $ocorrencia->status_color : $tarefa->status_color;
-                        $statusNormalizado = $ocorrencia ? $ocorrencia->getStatusNormalizado() : $tarefa->getStatusNormalizado();
+            foreach (array_unique($mesesTarefa) as $key) {
+                $ocorrencia = $ocorrenciaPorMes[$key] ?? null;
+                $status = $ocorrencia ? $ocorrencia->status : $tarefa->status;
+                $statusLabel = $ocorrencia ? $ocorrencia->status_label : $tarefa->status_label;
+                $statusColor = $ocorrencia ? $ocorrencia->status_color : $tarefa->status_color;
+                $statusNormalizado = $ocorrencia ? $ocorrencia->getStatusNormalizado() : $tarefa->getStatusNormalizado();
 
-                        $buckets[$key][] = [
-                            'id' => $tarefa->id,
-                            'meta' => $meta->descricao,
-                            'descricao' => $tarefa->descricao,
-                            'prazo' => $prazoPorMes[$key] ?? null,
-                            'responsavel' => $responsavelTexto ?: '-',
-                            'polo' => $tarefa->polo?->nome ?? 'Geral',
-                            'status' => $status,
-                            'status_label' => $statusLabel,
-                            'status_color' => $statusColor,
-                            'status_normalizado' => $statusNormalizado,
-                            'tem_historico' => $temHistorico,
-                            'ocorrencia_id' => $ocorrencia?->id,
-                        ];
-                    }
-                }
+                $buckets[$key][] = [
+                    'id' => $tarefa->id,
+                    'meta' => $meta->descricao,
+                    'descricao' => $tarefa->descricao,
+                    'prazo' => $prazoPorMes[$key] ?? null,
+                    'responsavel' => $responsavelTexto ?: '-',
+                    'polo' => $tarefa->polo?->nome ?? 'Geral',
+                    'status' => $status,
+                    'status_label' => $statusLabel,
+                    'status_color' => $statusColor,
+                    'status_normalizado' => $statusNormalizado,
+                    'tem_historico' => $temHistorico,
+                    'ocorrencia_id' => $ocorrencia?->id,
+                    'projeto_nome' => $projeto->nome,
+                    'projeto_id' => $projeto->id,
+                ];
             }
         }
 
+        // Filter by year
+        if ($this->year) {
+            $prefix = (string) $this->year;
+            $buckets = array_filter($buckets, fn ($_, $key) => str_starts_with($key, $prefix), ARRAY_FILTER_USE_BOTH);
+            $semData = $this->year == now()->year ? $semData : [];
+        }
+
+        // Filter by month
         if ($this->month) {
             $buckets = array_filter($buckets, fn ($_, $key) => $key === $this->month, ARRAY_FILTER_USE_BOTH);
+            $semData = [];
         }
+
+        // Filter by status
+        if ($this->statusFilter) {
+            $statusFilter = $this->statusFilter;
+            $buckets = array_map(function ($items) use ($statusFilter) {
+                return array_values(array_filter($items, fn ($t) => ($t['status_normalizado'] ?? '') === $statusFilter));
+            }, $buckets);
+            $buckets = array_filter($buckets, fn ($items) => !empty($items));
+            $semData = array_values(array_filter($semData, fn ($t) => ($t['status_normalizado'] ?? '') === $statusFilter));
+        }
+
+        // Sort by key (year-month)
+        ksort($buckets);
 
         $resultado = collect($buckets)
             ->map(function ($items, $key) {
@@ -408,16 +226,83 @@ class CronogramaOperacional extends Page implements HasActions
         return $resultado;
     }
 
-    public function getMetasOptions(): array
+    public function getAnosOptions(): array
     {
-        return $this->record->metas
-            ->mapWithKeys(fn ($meta) => [$meta->id => $meta->numero . ' - ' . $meta->descricao])
-            ->toArray();
+        $currentYear = now()->year;
+        $anos = [];
+        for ($y = $currentYear - 2; $y <= $currentYear + 2; $y++) {
+            $anos[$y] = (string) $y;
+        }
+        return $anos;
     }
 
-    protected function getHeaderActions(): array
+    public function getMesesOptions(): array
     {
-        return [];
+        $ano = $this->year ?? now()->year;
+        $meses = [];
+        for ($m = 1; $m <= 12; $m++) {
+            $date = Carbon::create($ano, $m, 1);
+            $meses[$date->format('Y-m')] = $date->translatedFormat('F Y');
+        }
+        return $meses;
+    }
+
+    public function getProjetosOptions(): array
+    {
+        $query = Projeto::query()->orderBy('nome');
+
+        $user = auth()->user();
+        if ($user && $user->isCoordenadorPolo()) {
+            $poloIds = $user->polos->pluck('id');
+            $query->whereHas('polos', function ($q) use ($poloIds) {
+                $q->whereIn('polos.id', $poloIds)
+                    ->orWhere('polos.is_geral', true);
+            });
+        }
+
+        return $query->pluck('nome', 'id')->toArray();
+    }
+
+    public function getStatusOptions(): array
+    {
+        return [
+            'pendente' => 'Pendente',
+            'em_execucao' => 'Em Execução',
+            'em_analise' => 'Em Análise',
+            'devolvido' => 'Devolvido',
+            'realizado' => 'Realizado',
+            'com_ressalvas' => 'Com Ressalvas',
+        ];
+    }
+
+    public function getResumo(): array
+    {
+        $mensal = $this->getTarefasMensal();
+        $total = 0;
+        $pendentes = 0;
+        $emAnalise = 0;
+        $realizadas = 0;
+
+        foreach ($mensal as $mes) {
+            foreach ($mes['items'] as $tarefa) {
+                $total++;
+                $sn = $tarefa['status_normalizado'] ?? 'pendente';
+                if (in_array($sn, ['pendente', 'em_execucao', 'devolvido'])) {
+                    $pendentes++;
+                } elseif ($sn === 'em_analise') {
+                    $emAnalise++;
+                } elseif (in_array($sn, ['realizado', 'com_ressalvas'])) {
+                    $realizadas++;
+                }
+            }
+        }
+
+        return [
+            'total' => $total,
+            'pendentes' => $pendentes,
+            'em_analise' => $emAnalise,
+            'realizadas' => $realizadas,
+        ];
     }
 
     public function realizarTarefaAction(): Action
@@ -433,7 +318,6 @@ class CronogramaOperacional extends Page implements HasActions
             })
             ->form([
                 Forms\Components\Hidden::make('tarefa_id')->required(),
-                Forms\Components\Hidden::make('tarefa_ocorrencia_id'),
                 Forms\Components\Hidden::make('tarefa_ocorrencia_id'),
                 Forms\Components\Textarea::make('comentario')
                     ->label('Comentário')
@@ -495,6 +379,7 @@ class CronogramaOperacional extends Page implements HasActions
             ->modalWidth('lg')
             ->form([
                 Forms\Components\Hidden::make('tarefa_id')->required(),
+                Forms\Components\Hidden::make('tarefa_ocorrencia_id'),
 
                 Forms\Components\Placeholder::make('info_envio')
                     ->label('Enviado por')

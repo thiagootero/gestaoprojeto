@@ -7,10 +7,12 @@ use App\Support\RecorrenciaDateGenerator;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Str;
 
 class EtapasPrestacaoRelationManager extends RelationManager
 {
@@ -38,15 +40,6 @@ class EtapasPrestacaoRelationManager extends RelationManager
         if (($data['origem'] ?? 'financiador') === 'interna') {
             $data['projeto_financiador_id'] = null;
         }
-
-        unset(
-            $data['recorrencia_tipo'],
-            $data['recorrencia_dia'],
-            $data['recorrencia_inicio'],
-            $data['recorrencia_repeticoes'],
-            $data['ate_final_projeto'],
-            $data['datas_personalizadas']
-        );
 
         return $data;
     }
@@ -95,14 +88,26 @@ class EtapasPrestacaoRelationManager extends RelationManager
                             'financeira' => 'Financeira',
                         ];
 
-                        if (!$record) {
-                            $options['ambas'] = 'Qualitativa + Financeira';
-                        }
+                        $options['ambas'] = 'Qualitativa + Financeira';
 
                         return $options;
                     })
                     ->required()
-                    ->native(false),
+                    ->native(false)
+                    ->afterStateHydrated(function ($state, callable $set, ?EtapaPrestacao $record): void {
+                        if (!$record || !$record->prestacao_grupo_id) {
+                            return;
+                        }
+
+                        $tipos = EtapaPrestacao::where('prestacao_grupo_id', $record->prestacao_grupo_id)
+                            ->pluck('tipo')
+                            ->unique()
+                            ->values();
+
+                        if ($tipos->contains('qualitativa') && $tipos->contains('financeira')) {
+                            $set('tipo', 'ambas');
+                        }
+                    }),
 
                 // --- Campos de recorrência (apenas na criação) ---
                 Forms\Components\Select::make('recorrencia_tipo')
@@ -119,14 +124,14 @@ class EtapasPrestacaoRelationManager extends RelationManager
                     ->native(false)
                     ->default('nenhuma')
                     ->reactive()
-                    ->visible(fn (string $operation): bool => $operation === 'create'),
+                    ->visible(fn (string $operation): bool => in_array($operation, ['create', 'edit'], true)),
 
                 Forms\Components\DatePicker::make('recorrencia_inicio')
                     ->label('Iniciar em')
                     ->displayFormat('d/m/Y')
                     ->native()
                     ->required(fn (Get $get): bool => RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma'))
-                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
+                    ->visible(fn (Get $get, string $operation): bool => in_array($operation, ['create', 'edit'], true) && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
 
                 Forms\Components\TextInput::make('recorrencia_dia')
                     ->label('Dia do mês')
@@ -134,13 +139,13 @@ class EtapasPrestacaoRelationManager extends RelationManager
                     ->minValue(1)
                     ->maxValue(31)
                     ->required(fn (Get $get): bool => RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma'))
-                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
+                    ->visible(fn (Get $get, string $operation): bool => in_array($operation, ['create', 'edit'], true) && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
 
                 Forms\Components\Toggle::make('ate_final_projeto')
                     ->label('Até o final do projeto')
                     ->default(false)
                     ->reactive()
-                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
+                    ->visible(fn (Get $get, string $operation): bool => in_array($operation, ['create', 'edit'], true) && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
 
                 Forms\Components\TextInput::make('recorrencia_repeticoes')
                     ->label('Quantidade de repetições')
@@ -148,7 +153,7 @@ class EtapasPrestacaoRelationManager extends RelationManager
                     ->minValue(1)
                     ->maxValue(120)
                     ->required(fn (Get $get): bool => RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma') && !$get('ate_final_projeto'))
-                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma') && !$get('ate_final_projeto')),
+                    ->visible(fn (Get $get, string $operation): bool => in_array($operation, ['create', 'edit'], true) && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma') && !$get('ate_final_projeto')),
 
                 Forms\Components\Repeater::make('datas_personalizadas')
                     ->label('Datas')
@@ -162,7 +167,7 @@ class EtapasPrestacaoRelationManager extends RelationManager
                     ->columns(1)
                     ->minItems(1)
                     ->defaultItems(1)
-                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && ($get('recorrencia_tipo') ?? 'nenhuma') === 'personalizado')
+                    ->visible(fn (Get $get, string $operation): bool => in_array($operation, ['create', 'edit'], true) && ($get('recorrencia_tipo') ?? 'nenhuma') === 'personalizado')
                     ->columnSpanFull(),
 
                 // --- Data limite (criação sem recorrência OU sempre na edição) ---
@@ -172,8 +177,8 @@ class EtapasPrestacaoRelationManager extends RelationManager
                     ->displayFormat('d/m/Y')
                     ->native()
                     ->visible(fn (Get $get, string $operation): bool =>
-                        $operation === 'edit'
-                        || ($operation === 'create' && ($get('recorrencia_tipo') ?? 'nenhuma') === 'nenhuma')
+                        ($operation === 'create' && ($get('recorrencia_tipo') ?? 'nenhuma') === 'nenhuma')
+                        || ($operation === 'edit' && ($get('recorrencia_tipo') ?? 'nenhuma') === 'nenhuma')
                     ),
 
                 Forms\Components\Textarea::make('observacoes')
@@ -188,6 +193,17 @@ class EtapasPrestacaoRelationManager extends RelationManager
     {
         return $table
             ->recordTitleAttribute('numero_etapa')
+            ->modifyQueryUsing(function ($query) {
+                return $query->where(function ($q) {
+                    $q->whereNull('prestacao_grupo_id')
+                        ->orWhereIn('id', function ($sub) {
+                            $sub->select(\DB::raw('MIN(id)'))
+                                ->from('etapas_prestacao')
+                                ->whereNotNull('prestacao_grupo_id')
+                                ->groupBy('prestacao_grupo_id');
+                        });
+                });
+            })
             ->columns([
                 Tables\Columns\TextColumn::make('origem')
                     ->label('Origem')
@@ -292,6 +308,7 @@ class EtapasPrestacaoRelationManager extends RelationManager
                         $recorrenciaRepeticoes = $data['recorrencia_repeticoes'] ?? null;
                         $ateFinalProjeto = $data['ate_final_projeto'] ?? false;
                         $datasPersonalizadas = $data['datas_personalizadas'] ?? [];
+                        $grupoId = (string) Str::uuid();
 
                         unset(
                             $data['recorrencia_tipo'],
@@ -303,6 +320,13 @@ class EtapasPrestacaoRelationManager extends RelationManager
                         );
 
                         $data['projeto_id'] = $this->getOwnerRecord()->id;
+                        $data['prestacao_grupo_id'] = $grupoId;
+                        $data['recorrencia_tipo'] = $recorrenciaTipo;
+                        $data['recorrencia_inicio'] = $recorrenciaInicio;
+                        $data['recorrencia_dia'] = $recorrenciaDia;
+                        $data['recorrencia_repeticoes'] = $recorrenciaRepeticoes;
+                        $data['ate_final_projeto'] = (bool) $ateFinalProjeto;
+                        $data['datas_personalizadas'] = $recorrenciaTipo === 'personalizado' ? $datasPersonalizadas : null;
                         if (($data['origem'] ?? 'financiador') === 'interna') {
                             $data['projeto_financiador_id'] = null;
                         }
@@ -370,7 +394,147 @@ class EtapasPrestacaoRelationManager extends RelationManager
                     }),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
+                Tables\Actions\EditAction::make()
+                    ->using(function (EtapaPrestacao $record, array $data): EtapaPrestacao {
+                        $recorrenciaTipo = $data['recorrencia_tipo'] ?? 'nenhuma';
+                        $recorrenciaDia = $data['recorrencia_dia'] ?? null;
+                        $recorrenciaInicio = $data['recorrencia_inicio'] ?? null;
+                        $recorrenciaRepeticoes = $data['recorrencia_repeticoes'] ?? null;
+                        $ateFinalProjeto = $data['ate_final_projeto'] ?? false;
+                        $datasPersonalizadas = $data['datas_personalizadas'] ?? [];
+
+                        unset(
+                            $data['recorrencia_tipo'],
+                            $data['recorrencia_dia'],
+                            $data['recorrencia_inicio'],
+                            $data['recorrencia_repeticoes'],
+                            $data['ate_final_projeto'],
+                            $data['datas_personalizadas']
+                        );
+
+                        $grupoId = $record->prestacao_grupo_id ?: (string) Str::uuid();
+                        if (!$record->prestacao_grupo_id) {
+                            $record->update(['prestacao_grupo_id' => $grupoId]);
+                        }
+
+                        $payloadBase = array_merge($data, [
+                            'projeto_id' => $this->getOwnerRecord()->id,
+                            'prestacao_grupo_id' => $grupoId,
+                            'recorrencia_tipo' => $recorrenciaTipo,
+                            'recorrencia_inicio' => $recorrenciaInicio,
+                            'recorrencia_dia' => $recorrenciaDia,
+                            'recorrencia_repeticoes' => $recorrenciaRepeticoes,
+                            'ate_final_projeto' => (bool) $ateFinalProjeto,
+                            'datas_personalizadas' => $recorrenciaTipo === 'personalizado' ? $datasPersonalizadas : null,
+                        ]);
+
+                        if (($payloadBase['origem'] ?? 'financiador') === 'interna') {
+                            $payloadBase['projeto_financiador_id'] = null;
+                        }
+
+                        $datas = [];
+                        if (RecorrenciaDateGenerator::isFrequenciaPeriodica($recorrenciaTipo)) {
+                            $inicio = $recorrenciaInicio ?? now()->toDateString();
+                            $dia = (int) $recorrenciaDia;
+
+                            if ($ateFinalProjeto) {
+                                $dataEncerramento = $this->getOwnerRecord()->data_encerramento;
+                                if ($dataEncerramento) {
+                                    $datas = RecorrenciaDateGenerator::gerarAteData(
+                                        $recorrenciaTipo,
+                                        $inicio,
+                                        $dia,
+                                        $dataEncerramento
+                                    );
+                                }
+                            } else {
+                                $datas = RecorrenciaDateGenerator::gerar(
+                                    $recorrenciaTipo,
+                                    $inicio,
+                                    $dia,
+                                    (int) $recorrenciaRepeticoes
+                                );
+                            }
+                        } elseif ($recorrenciaTipo === 'personalizado' && !empty($datasPersonalizadas)) {
+                            $datas = collect($datasPersonalizadas)
+                                ->pluck('data')
+                                ->filter()
+                                ->map(fn ($d) => \Carbon\Carbon::parse($d))
+                                ->sort()
+                                ->values()
+                                ->all();
+                        } elseif (!empty($data['data_limite'])) {
+                            $datas = [\Carbon\Carbon::parse($data['data_limite'])];
+                        }
+
+                        $groupEtapas = EtapaPrestacao::where('prestacao_grupo_id', $grupoId)->get();
+                        if ($groupEtapas->isEmpty()) {
+                            $groupEtapas = collect([$record]);
+                        }
+
+                        $tiposGrupo = $groupEtapas->pluck('tipo')->unique()->values();
+                        if (($data['tipo'] ?? null) === 'ambas') {
+                            $tiposTarget = ['qualitativa', 'financeira'];
+                        } else {
+                            $tiposTarget = $tiposGrupo->count() > 1
+                                ? $tiposGrupo->all()
+                                : [($data['tipo'] ?? $record->tipo)];
+                        }
+
+                        $statusMovimentado = ['em_analise', 'devolvido', 'realizado', 'com_ressalvas'];
+                        $isLocked = fn (EtapaPrestacao $e) => in_array($e->status, $statusMovimentado, true);
+
+                        if ($groupEtapas->filter($isLocked)->count() > 0) {
+                            Notification::make()
+                                ->title('Algumas etapas foram preservadas')
+                                ->body('Etapas com status já movimentado foram mantidas. As pendentes foram recriadas.')
+                                ->warning()
+                                ->send();
+                        }
+
+                        $existing = $groupEtapas->keyBy(fn (EtapaPrestacao $e) => $e->tipo . '|' . ($e->data_limite?->format('Y-m-d') ?? ''));
+
+                        $desiredKeys = [];
+                        foreach ($datas as $dataLimite) {
+                            $dateKey = \Carbon\Carbon::parse($dataLimite)->format('Y-m-d');
+                            foreach ($tiposTarget as $tipo) {
+                                $desiredKeys[] = $tipo . '|' . $dateKey;
+                            }
+                        }
+
+                        $primeiraAtualizada = null;
+
+                        foreach ($desiredKeys as $key) {
+                            [$tipo, $dateStr] = explode('|', $key);
+                            $dataLimite = \Carbon\Carbon::parse($dateStr);
+
+                            $etapa = $existing->get($key);
+                            if ($etapa) {
+                                if ($isLocked($etapa)) {
+                                    continue;
+                                }
+                                $etapa->update(array_merge($payloadBase, [
+                                    'tipo' => $tipo,
+                                    'data_limite' => $dataLimite,
+                                ]));
+                            } else {
+                                $etapa = EtapaPrestacao::create(array_merge($payloadBase, [
+                                    'tipo' => $tipo,
+                                    'data_limite' => $dataLimite,
+                                ]));
+                            }
+                            $primeiraAtualizada ??= $etapa;
+                        }
+
+                        $groupEtapas->filter(function (EtapaPrestacao $e) use ($desiredKeys, $isLocked) {
+                            $key = $e->tipo . '|' . ($e->data_limite?->format('Y-m-d') ?? '');
+                            return !in_array($key, $desiredKeys, true) && !$isLocked($e);
+                        })->each(function (EtapaPrestacao $e) {
+                            $e->delete();
+                        });
+
+                        return $primeiraAtualizada ?? $record;
+                    }),
                 Tables\Actions\DeleteAction::make(),
             ])
             ->bulkActions([

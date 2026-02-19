@@ -263,9 +263,8 @@ class ProjetoResource extends Resource
             $items[] = Pages\CronogramaOperacional::class;
         }
 
-        // Diretor de operações e coordenador de polo não veem prestação de contas
-        // Coordenador financeiro vê
-        if ($user && !$user->isDiretorOperacoes() && !$user->isCoordenadorPolo()) {
+        // Apenas Diretor de Projetos, Coordenador Financeiro e Super Admin veem prestação de contas
+        if ($user && ($user->isDiretorProjetos() || $user->isCoordenadorFinanceiro() || $user->isSuperAdmin())) {
             $items[] = Pages\CronogramaPrestacaoContas::class;
         }
 

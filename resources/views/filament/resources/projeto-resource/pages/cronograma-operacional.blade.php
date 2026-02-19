@@ -167,27 +167,24 @@
                                         <span class="text-gray-500 dark:text-gray-400">Polo:</span>
                                         {{ $tarefa['polo'] }}
                                     </div>
-                                    <div>
-                                        <span class="text-gray-500 dark:text-gray-400">Responsável:</span>
-                                        {{ $tarefa['responsavel'] }}
-                                    </div>
                                     <div class="flex items-center gap-1">
                                         @php
                                             $currentUser = auth()->user();
                                             $podeValidar = $currentUser?->isAdminGeral() || $currentUser?->isDiretorProjetos();
+                                            $podeEnviar = $currentUser?->isSuperAdmin() || $currentUser?->isCoordenadorPolo() || $currentUser?->isDiretorOperacoes();
                                             $status = $tarefa['status'] ?? '';
                                         @endphp
 
-                                        @if($status === 'em_analise')
-                                            @if($podeValidar)
-                                                <x-filament::button
-                                                    size="sm"
-                                                    color="warning"
-                                                    wire:click="mountAction('analisarTarefa', { tarefa_id: {{ $tarefa['id'] }} })"
-                                                >
-                                                    Analisar
-                                                </x-filament::button>
-                                            @else
+                                            @if($status === 'em_analise')
+                                                @if($podeValidar)
+                                                    <x-filament::button
+                                                        size="sm"
+                                                        color="warning"
+                                                        wire:click="mountAction('analisarTarefa', { tarefa_id: {{ $tarefa['id'] }}, tarefa_ocorrencia_id: {{ $tarefa['ocorrencia_id'] ?? 'null' }} })"
+                                                    >
+                                                        Analisar
+                                                    </x-filament::button>
+                                                @else
                                                 <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">
                                                     Aguardando validação
                                                 </span>
@@ -196,29 +193,33 @@
                                             <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
                                                 {{ $status === 'com_ressalvas' ? 'Validado com ressalva' : 'Validado' }}
                                             </span>
-                                        @elseif($status === 'devolvido')
-                                            <x-filament::button
-                                                size="sm"
-                                                color="primary"
-                                                wire:click="mountAction('realizarTarefa', { tarefa_id: {{ $tarefa['id'] }} })"
-                                            >
-                                                Reenviar
-                                            </x-filament::button>
-                                        @else
-                                            <x-filament::button
-                                                size="sm"
-                                                color="primary"
-                                                wire:click="mountAction('realizarTarefa', { tarefa_id: {{ $tarefa['id'] }} })"
-                                            >
-                                                Enviar
-                                            </x-filament::button>
+                                            @elseif($status === 'devolvido')
+                                                @if($podeEnviar)
+                                                    <x-filament::button
+                                                        size="sm"
+                                                        color="primary"
+                                                        wire:click="mountAction('realizarTarefa', { tarefa_id: {{ $tarefa['id'] }}, tarefa_ocorrencia_id: {{ $tarefa['ocorrencia_id'] ?? 'null' }} })"
+                                                    >
+                                                        Reenviar
+                                                    </x-filament::button>
+                                                @endif
+                                            @else
+                                                @if($podeEnviar)
+                                                    <x-filament::button
+                                                        size="sm"
+                                                        color="primary"
+                                                        wire:click="mountAction('realizarTarefa', { tarefa_id: {{ $tarefa['id'] }}, tarefa_ocorrencia_id: {{ $tarefa['ocorrencia_id'] ?? 'null' }} })"
+                                                    >
+                                                        Enviar
+                                                    </x-filament::button>
+                                                @endif
                                         @endif
 
                                         @if($tarefa['tem_historico'] ?? false)
                                             <x-filament::button
                                                 size="sm"
                                                 color="gray"
-                                                wire:click="mountAction('historicoTarefa', { tarefa_id: {{ $tarefa['id'] }} })"
+                                                wire:click="mountAction('historicoTarefa', { tarefa_id: {{ $tarefa['id'] }}, tarefa_ocorrencia_id: {{ $tarefa['ocorrencia_id'] ?? 'null' }} })"
                                             >
                                                 Histórico
                                             </x-filament::button>

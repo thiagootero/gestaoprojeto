@@ -37,6 +37,18 @@ class CronogramaPrestacaoContas extends Page implements HasActions
 
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
 
+    public static function canAccess(array $parameters = []): bool
+    {
+        $user = auth()->user();
+        if (!$user) {
+            return false;
+        }
+
+        return $user->isSuperAdmin()
+            || $user->isDiretorProjetos()
+            || $user->isCoordenadorFinanceiro();
+    }
+
     public function getBreadcrumbs(): array
     {
         return [
@@ -191,10 +203,28 @@ class CronogramaPrestacaoContas extends Page implements HasActions
         return Action::make('realizarPrestacao')
             ->label('Enviar para Análise')
             ->modalHeading('Enviar prestação de contas para análise')
-            ->modalDescription('A prestação será enviada para validação do Diretor de Operações / Admin.')
+            ->modalDescription(function (): string {
+                $user = auth()->user();
+                if ($user && ($user->isSuperAdmin() || $user->isDiretorProjetos() || $user->isCoordenadorFinanceiro())) {
+                    return 'A prestação será validada imediatamente.';
+                }
+                return 'A prestação será enviada para validação do Diretor de Operações / Admin.';
+            })
             ->modalSubmitActionLabel('Enviar')
             ->form([
                 Forms\Components\Hidden::make('etapa_id')->required(),
+                Forms\Components\Select::make('decisao_envio')
+                    ->label('Envio')
+                    ->options([
+                        'enviar' => 'Validado',
+                        'enviar_ressalva' => 'Validado com ressalva',
+                    ])
+                    ->required()
+                    ->native(false)
+                    ->visible(function (): bool {
+                        $user = auth()->user();
+                        return $user && ($user->isSuperAdmin() || $user->isDiretorProjetos() || $user->isCoordenadorFinanceiro());
+                    }),
                 Forms\Components\Textarea::make('comentario')
                     ->label('Comentário')
                     ->required()
@@ -207,6 +237,8 @@ class CronogramaPrestacaoContas extends Page implements HasActions
             ->action(function (array $data) {
                 $etapa = EtapaPrestacao::findOrFail($data['etapa_id']);
                 $user = auth()->user();
+
+                $autoValidar = $user && ($user->isSuperAdmin() || $user->isDiretorProjetos() || $user->isCoordenadorFinanceiro());
 
                 if ($user->isCoordenadorFinanceiro() && $etapa->tipo !== 'financeira') {
                     Notification::make()
@@ -231,6 +263,33 @@ class CronogramaPrestacaoContas extends Page implements HasActions
                     'user_id' => $user->id,
                     'comentario' => $data['comentario'],
                 ]);
+
+                if ($autoValidar) {
+                    $decisao = $data['decisao_envio'] ?? 'enviar';
+                    $status = $decisao === 'enviar_ressalva' ? 'com_ressalvas' : 'realizado';
+                    $updateData = [
+                        'status' => $status,
+                        'validado_por' => $user->id,
+                        'validado_em' => now(),
+                    ];
+
+                    if ($decisao === 'enviar_ressalva') {
+                        $obs = $etapa->observacoes;
+                        $updateData['observacoes'] = ($obs ? $obs . "\n" : '')
+                            . '[Validado com ressalva por ' . $user->name . '] ' . $data['comentario'];
+                    }
+
+                    $etapa->update($updateData);
+
+                    Notification::make()
+                        ->title($decisao === 'enviar_ressalva'
+                            ? 'Prestação validada com ressalva'
+                            : 'Prestação validada')
+                        ->success()
+                        ->send();
+
+                    return;
+                }
 
                 $etapa->update(['status' => 'em_analise']);
 

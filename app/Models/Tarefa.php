@@ -11,6 +11,13 @@ class Tarefa extends Model
 {
     protected $fillable = [
         'meta_id',
+        'tarefa_grupo_id',
+        'recorrencia_tipo',
+        'recorrencia_inicio',
+        'recorrencia_dia',
+        'recorrencia_repeticoes',
+        'ate_final_projeto',
+        'datas_personalizadas',
         'numero',
         'descricao',
         'responsavel',
@@ -34,6 +41,9 @@ class Tarefa extends Model
             'data_fim' => 'date',
             'comprovacao_validada' => 'boolean',
             'validado_em' => 'datetime',
+            'recorrencia_inicio' => 'date',
+            'ate_final_projeto' => 'boolean',
+            'datas_personalizadas' => 'array',
         ];
     }
 

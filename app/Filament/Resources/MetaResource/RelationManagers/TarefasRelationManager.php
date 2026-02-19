@@ -9,9 +9,12 @@ use App\Support\RecorrenciaDateGenerator;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class TarefasRelationManager extends RelationManager
 {
@@ -35,19 +38,49 @@ class TarefasRelationManager extends RelationManager
 
                 Forms\Components\Select::make('polo_ids')
                     ->label('Polo')
-                    ->options(fn () => Polo::where('ativo', true)->pluck('nome', 'id'))
+                    ->options(function (): array {
+                        $projeto = $this->getOwnerRecord()?->projeto;
+                        if ($projeto) {
+                            return $projeto->polos()
+                                ->where('polos.ativo', true)
+                                ->pluck('polos.nome', 'polos.id')
+                                ->toArray();
+                        }
+
+                        return Polo::where('ativo', true)->pluck('nome', 'id')->toArray();
+                    })
                     ->multiple()
                     ->native()
-                    ->dehydrated(false)
-                    ->helperText('Selecione um ou mais polos. Deixe vazio para tarefa administrativa')
-                    ->visible(fn (string $operation): bool => $operation === 'create'),
+                    ->helperText('Selecione um ou mais polos. Na edição, as tarefas serão recriadas por polo.')
+                    ->afterStateHydrated(function ($state, callable $set, ?Tarefa $record): void {
+                        if (!$record) {
+                            return;
+                        }
+
+                        if ($record->tarefa_grupo_id) {
+                            $poloIds = Tarefa::where('tarefa_grupo_id', $record->tarefa_grupo_id)
+                                ->pluck('polo_id')
+                                ->filter()
+                                ->values()
+                                ->all();
+                            if (!empty($poloIds)) {
+                                $set('polo_ids', $poloIds);
+                                return;
+                            }
+                        }
+
+                        if ($record->polo_id) {
+                            $set('polo_ids', [$record->polo_id]);
+                        }
+                    }),
 
                 Forms\Components\Select::make('responsaveis')
                     ->label('Responsáveis')
                     ->relationship('responsaveis', 'name')
                     ->multiple()
                     ->searchable()
-                    ->preload(),
+                    ->preload()
+                    ->visible(false),
 
                 // --- Campos de recorrência (apenas na criação) ---
                 Forms\Components\Select::make('recorrencia_tipo')
@@ -64,14 +97,14 @@ class TarefasRelationManager extends RelationManager
                     ->native(false)
                     ->default('nenhuma')
                     ->reactive()
-                    ->visible(fn (string $operation): bool => $operation === 'create'),
+                    ->visible(fn (string $operation): bool => in_array($operation, ['create', 'edit'], true)),
 
                 Forms\Components\DatePicker::make('recorrencia_inicio')
                     ->label('Iniciar em')
                     ->displayFormat('d/m/Y')
                     ->native()
                     ->required(fn (Get $get): bool => RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma'))
-                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
+                    ->visible(fn (Get $get, string $operation): bool => in_array($operation, ['create', 'edit'], true) && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
 
                 Forms\Components\TextInput::make('recorrencia_dia')
                     ->label('Dia do mês')
@@ -79,13 +112,13 @@ class TarefasRelationManager extends RelationManager
                     ->minValue(1)
                     ->maxValue(31)
                     ->required(fn (Get $get): bool => RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma'))
-                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
+                    ->visible(fn (Get $get, string $operation): bool => in_array($operation, ['create', 'edit'], true) && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
 
                 Forms\Components\Toggle::make('ate_final_projeto')
                     ->label('Até o final do projeto')
                     ->default(false)
                     ->reactive()
-                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
+                    ->visible(fn (Get $get, string $operation): bool => in_array($operation, ['create', 'edit'], true) && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
 
                 Forms\Components\TextInput::make('recorrencia_repeticoes')
                     ->label('Quantidade de repetições')
@@ -93,7 +126,7 @@ class TarefasRelationManager extends RelationManager
                     ->minValue(1)
                     ->maxValue(120)
                     ->required(fn (Get $get): bool => RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma') && !$get('ate_final_projeto'))
-                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma') && !$get('ate_final_projeto')),
+                    ->visible(fn (Get $get, string $operation): bool => in_array($operation, ['create', 'edit'], true) && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma') && !$get('ate_final_projeto')),
 
                 Forms\Components\Repeater::make('datas_personalizadas')
                     ->label('Datas')
@@ -107,7 +140,7 @@ class TarefasRelationManager extends RelationManager
                     ->columns(1)
                     ->minItems(1)
                     ->defaultItems(1)
-                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && ($get('recorrencia_tipo') ?? 'nenhuma') === 'personalizado')
+                    ->visible(fn (Get $get, string $operation): bool => in_array($operation, ['create', 'edit'], true) && ($get('recorrencia_tipo') ?? 'nenhuma') === 'personalizado')
                     ->columnSpanFull(),
 
                 // --- Data única (criação sem recorrência OU edição sem ocorrências) ---
@@ -117,31 +150,12 @@ class TarefasRelationManager extends RelationManager
                     ->native()
                     ->required(fn (Get $get, string $operation, ?Tarefa $record): bool =>
                         ($operation === 'create' && ($get('recorrencia_tipo') ?? 'nenhuma') === 'nenhuma')
-                        || ($operation === 'edit' && $record && !$record->ocorrencias()->exists())
+                        || ($operation === 'edit' && ($get('recorrencia_tipo') ?? 'nenhuma') === 'nenhuma')
                     )
                     ->visible(fn (Get $get, string $operation, ?Tarefa $record): bool =>
                         ($operation === 'create' && ($get('recorrencia_tipo') ?? 'nenhuma') === 'nenhuma')
-                        || ($operation === 'edit' && $record && !$record->ocorrencias()->exists())
+                        || ($operation === 'edit' && ($get('recorrencia_tipo') ?? 'nenhuma') === 'nenhuma')
                     ),
-
-                // --- Ocorrências (edição de tarefa que já possui ocorrências) ---
-                Forms\Components\Repeater::make('ocorrencias')
-                    ->label('Datas das Ocorrências')
-                    ->relationship('ocorrencias')
-                    ->schema([
-                        Forms\Components\DatePicker::make('data_fim')
-                            ->label('Data')
-                            ->displayFormat('d/m/Y')
-                            ->native()
-                            ->required(),
-                    ])
-                    ->columns(1)
-                    ->defaultItems(0)
-                    ->addActionLabel('Adicionar data')
-                    ->visible(fn (string $operation, ?Tarefa $record): bool =>
-                        $operation === 'edit' && $record !== null && $record->ocorrencias()->exists()
-                    )
-                    ->columnSpanFull(),
 
                 Forms\Components\Textarea::make('como_fazer')
                     ->label('Como Fazer')
@@ -155,12 +169,18 @@ class TarefasRelationManager extends RelationManager
     {
         return $table
             ->recordTitleAttribute('descricao')
+            ->modifyQueryUsing(function ($query) {
+                return $query->where(function ($q) {
+                    $q->whereNull('tarefa_grupo_id')
+                        ->orWhereIn('id', function ($sub) {
+                            $sub->select(DB::raw('MIN(id)'))
+                                ->from('tarefas')
+                                ->whereNotNull('tarefa_grupo_id')
+                                ->groupBy('tarefa_grupo_id');
+                        });
+                });
+            })
             ->columns([
-                Tables\Columns\TextColumn::make('numero')
-                    ->label('Nº')
-                    ->sortable()
-                    ->alignCenter(),
-
                 Tables\Columns\TextColumn::make('descricao')
                     ->label('Descrição')
                     ->searchable()
@@ -171,13 +191,24 @@ class TarefasRelationManager extends RelationManager
                     ->label('Polo')
                     ->badge()
                     ->placeholder('NSA')
-                    ->sortable(),
+                    ->sortable()
+                    ->formatStateUsing(function ($state, Tarefa $record): string {
+                        if (!$record->tarefa_grupo_id) {
+                            return $record->polo?->nome ?? 'Geral';
+                        }
 
-                Tables\Columns\TextColumn::make('responsavel')
-                    ->label('Responsável')
-                    ->searchable()
-                    ->limit(30)
-                    ->toggleable(),
+                        $polos = Tarefa::where('tarefa_grupo_id', $record->tarefa_grupo_id)
+                            ->with('polo')
+                            ->get()
+                            ->map(fn (Tarefa $t) => $t->polo?->nome)
+                            ->filter()
+                            ->unique()
+                            ->values();
+
+                        return $polos->isNotEmpty()
+                            ? $polos->join(', ')
+                            : 'Geral';
+                    }),
 
                 Tables\Columns\TextColumn::make('data_fim')
                     ->label('Prazo')
@@ -186,22 +217,6 @@ class TarefasRelationManager extends RelationManager
                     ->color(fn (Tarefa $record): string =>
                         $record->atrasada ? 'danger' : ($record->vencendo ? 'warning' : 'gray')
                     ),
-
-                Tables\Columns\TextColumn::make('status')
-                    ->label('Status')
-                    ->badge()
-                    ->formatStateUsing(fn (string $state, Tarefa $record): string => $record->status_label)
-                    ->color(fn (string $state, Tarefa $record): string => $record->status_color)
-                    ->sortable(),
-
-                Tables\Columns\IconColumn::make('link_comprovacao')
-                    ->label('Comprov.')
-                    ->boolean()
-                    ->trueIcon('heroicon-o-link')
-                    ->falseIcon('heroicon-o-minus')
-                    ->trueColor('success')
-                    ->falseColor('gray')
-                    ->alignCenter(),
 
                 Tables\Columns\IconColumn::make('comprovacao_validada')
                     ->label('Validada')
@@ -231,12 +246,21 @@ class TarefasRelationManager extends RelationManager
                     ->using(function (array $data) {
                         $poloIds = $data['polo_ids'] ?? [];
                         $responsaveis = $data['responsaveis'] ?? [];
+                        $grupoId = (string) Str::uuid();
                         $recorrenciaTipo = $data['recorrencia_tipo'] ?? 'nenhuma';
                         $recorrenciaDia = $data['recorrencia_dia'] ?? null;
                         $recorrenciaInicio = $data['recorrencia_inicio'] ?? null;
                         $recorrenciaRepeticoes = $data['recorrencia_repeticoes'] ?? null;
                         $ateFinalProjeto = $data['ate_final_projeto'] ?? false;
                         $datasPersonalizadas = $data['datas_personalizadas'] ?? [];
+                        $recorrenciaPayload = [
+                            'recorrencia_tipo' => $recorrenciaTipo,
+                            'recorrencia_inicio' => $recorrenciaInicio,
+                            'recorrencia_dia' => $recorrenciaDia,
+                            'recorrencia_repeticoes' => $recorrenciaRepeticoes,
+                            'ate_final_projeto' => (bool) $ateFinalProjeto,
+                            'datas_personalizadas' => $recorrenciaTipo === 'personalizado' ? $datasPersonalizadas : null,
+                        ];
                         unset(
                             $data['polo_ids'],
                             $data['responsaveis'],
@@ -248,6 +272,8 @@ class TarefasRelationManager extends RelationManager
                             $data['datas_personalizadas']
                         );
                         $data['meta_id'] = $this->getOwnerRecord()->id;
+                        $data['tarefa_grupo_id'] = $grupoId;
+                        $data = array_merge($data, $recorrenciaPayload);
 
                         $datas = [];
                         if (RecorrenciaDateGenerator::isFrequenciaPeriodica($recorrenciaTipo)) {
@@ -314,7 +340,206 @@ class TarefasRelationManager extends RelationManager
                     }),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
+                Tables\Actions\EditAction::make()
+                    ->using(function (Tarefa $record, array $data): Tarefa {
+                        $poloIds = $data['polo_ids'] ?? [];
+                        $responsaveis = $data['responsaveis'] ?? [];
+                        $recorrenciaTipo = $data['recorrencia_tipo'] ?? 'nenhuma';
+                        $recorrenciaDia = $data['recorrencia_dia'] ?? null;
+                        $recorrenciaInicio = $data['recorrencia_inicio'] ?? null;
+                        $recorrenciaRepeticoes = $data['recorrencia_repeticoes'] ?? null;
+                        $ateFinalProjeto = $data['ate_final_projeto'] ?? false;
+                        $datasPersonalizadas = $data['datas_personalizadas'] ?? [];
+
+                        unset(
+                            $data['polo_ids'],
+                            $data['responsaveis'],
+                            $data['recorrencia_tipo'],
+                            $data['recorrencia_dia'],
+                            $data['recorrencia_inicio'],
+                            $data['recorrencia_repeticoes'],
+                            $data['ate_final_projeto'],
+                            $data['datas_personalizadas']
+                        );
+
+                        $grupoId = $record->tarefa_grupo_id ?: (string) Str::uuid();
+                        if (!$record->tarefa_grupo_id) {
+                            $record->update(['tarefa_grupo_id' => $grupoId]);
+                        }
+
+                        $payloadBase = array_merge($data, [
+                            'meta_id' => $record->meta_id,
+                            'tarefa_grupo_id' => $grupoId,
+                            'recorrencia_tipo' => $recorrenciaTipo,
+                            'recorrencia_inicio' => $recorrenciaInicio,
+                            'recorrencia_dia' => $recorrenciaDia,
+                            'recorrencia_repeticoes' => $recorrenciaRepeticoes,
+                            'ate_final_projeto' => (bool) $ateFinalProjeto,
+                            'datas_personalizadas' => $recorrenciaTipo === 'personalizado' ? $datasPersonalizadas : null,
+                        ]);
+
+                        $datas = [];
+                        if (RecorrenciaDateGenerator::isFrequenciaPeriodica($recorrenciaTipo)) {
+                            $inicio = $recorrenciaInicio ?? now()->toDateString();
+                            $dia = (int) $recorrenciaDia;
+
+                            if ($ateFinalProjeto) {
+                                $dataEncerramento = $this->getOwnerRecord()->projeto->data_encerramento;
+                                if ($dataEncerramento) {
+                                    $datas = RecorrenciaDateGenerator::gerarAteData(
+                                        $recorrenciaTipo,
+                                        $inicio,
+                                        $dia,
+                                        $dataEncerramento
+                                    );
+                                }
+                            } else {
+                                $datas = RecorrenciaDateGenerator::gerar(
+                                    $recorrenciaTipo,
+                                    $inicio,
+                                    $dia,
+                                    (int) $recorrenciaRepeticoes
+                                );
+                            }
+                        } elseif ($recorrenciaTipo === 'personalizado' && !empty($datasPersonalizadas)) {
+                            $datas = collect($datasPersonalizadas)
+                                ->pluck('data')
+                                ->filter()
+                                ->map(fn ($d) => \Carbon\Carbon::parse($d))
+                                ->sort()
+                                ->values()
+                                ->all();
+                        }
+
+                        if (!empty($datas)) {
+                            $payloadBase['data_fim'] = $datas[0];
+                        }
+
+                        $groupTasks = Tarefa::where('tarefa_grupo_id', $grupoId)->get();
+                        if ($groupTasks->isEmpty()) {
+                            $groupTasks = collect([$record]);
+                        }
+
+                        $targetPoloIds = collect($poloIds)->map(fn ($id) => (int) $id)->filter()->values()->all();
+                        $hasTargets = !empty($targetPoloIds);
+
+                        $existingByPolo = $groupTasks->keyBy(fn (Tarefa $t) => $t->polo_id ?? 0);
+
+                        $statusMovimentado = ['em_analise', 'devolvido', 'realizado', 'concluido', 'com_ressalvas'];
+                        $hasMovimentadas = function (Tarefa $t) use ($statusMovimentado): bool {
+                            if ($t->ocorrencias()->exists()) {
+                                return $t->ocorrencias()
+                                    ->whereIn('status', $statusMovimentado)
+                                    ->exists();
+                            }
+
+                            $normalizado = $t->getStatusNormalizado();
+                            return $normalizado !== 'pendente';
+                        };
+
+                        if ($groupTasks->filter($hasMovimentadas)->count() > 0) {
+                            Notification::make()
+                                ->title('Algumas ocorrências foram preservadas')
+                                ->body('Ocorrências já movimentadas foram mantidas. As pendentes foram recriadas.')
+                                ->warning()
+                                ->send();
+                        }
+
+                        $updateTask = function (Tarefa $task) use ($payloadBase, $responsaveis, $datas, $statusMovimentado): void {
+                            $hasOcorrencias = $task->ocorrencias()->exists();
+                            if (!$hasOcorrencias && $task->getStatusNormalizado() !== 'pendente') {
+                                return;
+                            }
+
+                            $task->update($payloadBase);
+                            $task->responsaveis()->detach();
+                            if (!empty($responsaveis)) {
+                                $task->responsaveis()->sync($responsaveis);
+                            }
+
+                            if (!$hasOcorrencias) {
+                                $task->ocorrencias()->delete();
+                                if (!empty($datas)) {
+                                    $task->ocorrencias()->createMany(
+                                        collect($datas)->map(fn ($d) => ['data_fim' => $d])->all()
+                                    );
+                                }
+                                return;
+                            }
+
+                            $movimentadas = $task->ocorrencias()
+                                ->whereIn('status', $statusMovimentado)
+                                ->get();
+                            $datasMovimentadas = $movimentadas
+                                ->pluck('data_fim')
+                                ->filter()
+                                ->map(fn ($d) => $d->format('Y-m-d'))
+                                ->all();
+
+                            $task->ocorrencias()
+                                ->whereNotIn('status', $statusMovimentado)
+                                ->delete();
+
+                            if (!empty($datas)) {
+                                $novasDatas = collect($datas)
+                                    ->map(fn ($d) => $d->format('Y-m-d'))
+                                    ->reject(fn ($d) => in_array($d, $datasMovimentadas, true))
+                                    ->unique()
+                                    ->values()
+                                    ->all();
+
+                                if (!empty($novasDatas)) {
+                                    $task->ocorrencias()->createMany(
+                                        collect($novasDatas)->map(fn ($d) => ['data_fim' => $d])->all()
+                                    );
+                                }
+                            }
+                        };
+
+                        $primeiraAtualizada = null;
+
+                        if (!$hasTargets) {
+                            $task = $existingByPolo->get(0) ?? $record;
+                            $task->update(array_merge($payloadBase, ['polo_id' => null]));
+                            $updateTask($task);
+                            $primeiraAtualizada = $task;
+
+                            $groupTasks->filter(fn (Tarefa $t) => $t->id !== $task->id)->each(function (Tarefa $t) use ($hasMovimentadas) {
+                                if ($hasMovimentadas($t)) {
+                                    return;
+                                }
+                                $t->responsaveis()->detach();
+                                $t->ocorrencias()->delete();
+                                $t->delete();
+                            });
+
+                            return $primeiraAtualizada;
+                        }
+
+                        foreach ($targetPoloIds as $poloId) {
+                            $task = $existingByPolo->get($poloId);
+                            if ($task) {
+                                $task->update(array_merge($payloadBase, ['polo_id' => $poloId]));
+                                $updateTask($task);
+                            } else {
+                                $task = Tarefa::create(array_merge($payloadBase, ['polo_id' => $poloId]));
+                                $updateTask($task);
+                            }
+                            $primeiraAtualizada ??= $task;
+                        }
+
+                        $groupTasks->filter(fn (Tarefa $t) => !in_array($t->polo_id, $targetPoloIds, true))
+                            ->each(function (Tarefa $t) use ($hasMovimentadas) {
+                                if ($hasMovimentadas($t)) {
+                                    return;
+                                }
+                                $t->responsaveis()->detach();
+                                $t->ocorrencias()->delete();
+                                $t->delete();
+                            });
+
+                        return $primeiraAtualizada ?? $record;
+                    }),
                 Tables\Actions\DeleteAction::make(),
             ])
             ->bulkActions([
