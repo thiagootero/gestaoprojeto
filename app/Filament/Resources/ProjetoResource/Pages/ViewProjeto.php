@@ -15,6 +15,14 @@ class ViewProjeto extends ViewRecord
 
     protected static string $view = 'filament.resources.projeto-resource.pages.view-projeto';
 
+    public function getBreadcrumbs(): array
+    {
+        return [
+            ProjetoResource::getUrl('index') => 'Projetos',
+            $this->record->nome,
+        ];
+    }
+
     public function mount(int | string $record): void
     {
         parent::mount($record);
@@ -23,6 +31,7 @@ class ViewProjeto extends ViewRecord
             'metas.tarefas.ocorrencias',
             'metas.tarefas.responsaveis',
             'etapasPrestacao.projetoFinanciador.financiador',
+            'anexos',
         ]);
     }
 
@@ -52,8 +61,8 @@ class ViewProjeto extends ViewRecord
                     return $tarefa->ocorrencias->map(function ($ocorrencia) use ($tarefa, $responsavelTexto) {
                         $dataFim = $ocorrencia->data_fim;
                         $diasRestantes = now()->startOfDay()->diffInDays($dataFim, false);
-                        $atrasada = $dataFim->isPast() && !in_array($tarefa->status, ['realizado', 'concluido']);
-                        $vencendo = $diasRestantes >= 0 && $diasRestantes <= 7 && !in_array($tarefa->status, ['realizado', 'concluido']);
+                        $atrasada = $dataFim->isPast() && !in_array($tarefa->status, ['realizado', 'concluido', 'com_ressalvas']);
+                        $vencendo = $diasRestantes >= 0 && $diasRestantes <= 7 && !in_array($tarefa->status, ['realizado', 'concluido', 'com_ressalvas']);
 
                         return [
                             'id' => $tarefa->id . '-' . $ocorrencia->id,
@@ -98,7 +107,7 @@ class ViewProjeto extends ViewRecord
                 'percentual' => $meta->percentual_conclusao,
                 'tarefas' => $tarefas,
                 'total_tarefas' => $tarefas->count(),
-                'tarefas_concluidas' => $tarefas->whereIn('status', ['realizado', 'concluido'])->count(),
+                'tarefas_concluidas' => $tarefas->whereIn('status', ['realizado', 'concluido', 'com_ressalvas'])->count(),
             ];
         });
     }

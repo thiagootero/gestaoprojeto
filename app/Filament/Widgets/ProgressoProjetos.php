@@ -23,7 +23,7 @@ class ProgressoProjetos extends Widget
             ->get()
             ->map(function ($projeto) {
                 $totalTarefas = $projeto->tarefas()->count();
-                $tarefasConcluidas = $projeto->tarefas()->whereIn('tarefas.status', ['realizado', 'concluido'])->count();
+                $tarefasConcluidas = $projeto->tarefas()->whereIn('tarefas.status', ['realizado', 'concluido', 'com_ressalvas'])->count();
                 $percentual = $totalTarefas > 0 ? round(($tarefasConcluidas / $totalTarefas) * 100, 1) : 0;
 
                 return [

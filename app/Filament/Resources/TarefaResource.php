@@ -109,6 +109,25 @@ class TarefaResource extends Resource
                     ])
                     ->columns(2),
 
+                Forms\Components\Section::make('Ocorrências')
+                    ->schema([
+                        Forms\Components\Repeater::make('ocorrencias')
+                            ->relationship('ocorrencias')
+                            ->schema([
+                                Forms\Components\DatePicker::make('data_fim')
+                                    ->label('Data')
+                                    ->displayFormat('d/m/Y')
+                                    ->native(false)
+                                    ->required(),
+                            ])
+                            ->columns(1)
+                            ->defaultItems(0)
+                            ->addActionLabel('Adicionar data')
+                            ->columnSpanFull(),
+                    ])
+                    ->visible(fn (?Tarefa $record): bool => $record !== null && $record->ocorrencias()->exists())
+                    ->collapsible(),
+
                 Forms\Components\Section::make('Comprovação')
                     ->schema([
                         Forms\Components\TextInput::make('link_comprovacao')
@@ -201,6 +220,7 @@ class TarefaResource extends Resource
                         'em_execucao' => 'Em Execução',
                         'em_analise' => 'Em Análise',
                         'devolvido' => 'Devolvido para ajuste',
+                        'com_ressalvas' => 'Validado com ressalva',
                         'realizado' => 'Realizado',
                     ]),
                 Tables\Filters\TernaryFilter::make('comprovacao_validada')
@@ -210,7 +230,7 @@ class TarefaResource extends Resource
                     ->query(fn (Builder $query): Builder => $query
                         ->whereNotNull('data_fim')
                         ->where('data_fim', '<', now())
-                        ->whereNotIn('status', ['realizado', 'concluido'])
+                        ->whereNotIn('status', ['realizado', 'concluido', 'com_ressalvas'])
                     ),
             ])
             ->actions([

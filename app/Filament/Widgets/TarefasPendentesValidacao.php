@@ -21,7 +21,7 @@ class TarefasPendentesValidacao extends BaseWidget
             ->query(
                 Tarefa::query()
                     ->with(['meta.projeto', 'polo'])
-                    ->whereIn('status', ['realizado', 'concluido'])
+                    ->whereIn('status', ['realizado', 'concluido', 'com_ressalvas'])
                     ->where('comprovacao_validada', false)
                     ->whereNotNull('link_comprovacao')
                     ->orderBy('updated_at', 'desc')

@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ProjetoResource\RelationManagers;
 
 use App\Models\EtapaPrestacao;
+use App\Support\RecorrenciaDateGenerator;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
@@ -37,6 +38,15 @@ class EtapasPrestacaoRelationManager extends RelationManager
         if (($data['origem'] ?? 'financiador') === 'interna') {
             $data['projeto_financiador_id'] = null;
         }
+
+        unset(
+            $data['recorrencia_tipo'],
+            $data['recorrencia_dia'],
+            $data['recorrencia_inicio'],
+            $data['recorrencia_repeticoes'],
+            $data['ate_final_projeto'],
+            $data['datas_personalizadas']
+        );
 
         return $data;
     }
@@ -94,45 +104,77 @@ class EtapasPrestacaoRelationManager extends RelationManager
                     ->required()
                     ->native(false),
 
+                // --- Campos de recorrência (apenas na criação) ---
                 Forms\Components\Select::make('recorrencia_tipo')
                     ->label('Recorrência')
                     ->options([
                         'nenhuma' => 'Sem recorrência',
-                        'dia_mes' => 'Todo dia X',
+                        'mensal' => 'Mensal',
+                        'bimestral' => 'Bimestral',
+                        'trimestral' => 'Trimestral',
+                        'semestral' => 'Semestral',
+                        'anual' => 'Anual',
+                        'personalizado' => 'Datas personalizadas',
                     ])
                     ->native(false)
                     ->default('nenhuma')
-                    ->reactive(),
+                    ->reactive()
+                    ->visible(fn (string $operation): bool => $operation === 'create'),
 
                 Forms\Components\DatePicker::make('recorrencia_inicio')
                     ->label('Iniciar em')
                     ->displayFormat('d/m/Y')
                     ->native()
-                    ->required(fn (Get $get): bool => $get('recorrencia_tipo') !== 'nenhuma')
-                    ->visible(fn (Get $get): bool => $get('recorrencia_tipo') !== 'nenhuma'),
+                    ->required(fn (Get $get): bool => RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma'))
+                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
 
                 Forms\Components\TextInput::make('recorrencia_dia')
                     ->label('Dia do mês')
                     ->numeric()
                     ->minValue(1)
                     ->maxValue(31)
-                    ->required(fn (Get $get): bool => $get('recorrencia_tipo') === 'dia_mes')
-                    ->visible(fn (Get $get): bool => $get('recorrencia_tipo') === 'dia_mes'),
+                    ->required(fn (Get $get): bool => RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma'))
+                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
+
+                Forms\Components\Toggle::make('ate_final_projeto')
+                    ->label('Até o final do projeto')
+                    ->default(false)
+                    ->reactive()
+                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
 
                 Forms\Components\TextInput::make('recorrencia_repeticoes')
                     ->label('Quantidade de repetições')
                     ->numeric()
                     ->minValue(1)
                     ->maxValue(120)
-                    ->required(fn (Get $get): bool => $get('recorrencia_tipo') !== 'nenhuma')
-                    ->visible(fn (Get $get): bool => $get('recorrencia_tipo') !== 'nenhuma'),
+                    ->required(fn (Get $get): bool => RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma') && !$get('ate_final_projeto'))
+                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma') && !$get('ate_final_projeto')),
 
+                Forms\Components\Repeater::make('datas_personalizadas')
+                    ->label('Datas')
+                    ->schema([
+                        Forms\Components\DatePicker::make('data')
+                            ->label('Data')
+                            ->displayFormat('d/m/Y')
+                            ->native()
+                            ->required(),
+                    ])
+                    ->columns(1)
+                    ->minItems(1)
+                    ->defaultItems(1)
+                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && ($get('recorrencia_tipo') ?? 'nenhuma') === 'personalizado')
+                    ->columnSpanFull(),
+
+                // --- Data limite (criação sem recorrência OU sempre na edição) ---
                 Forms\Components\DatePicker::make('data_limite')
                     ->label('Data Limite')
-                    ->required(fn (Get $get): bool => ($get('recorrencia_tipo') ?? 'nenhuma') === 'nenhuma')
+                    ->required()
                     ->displayFormat('d/m/Y')
                     ->native()
-                    ->visible(fn (Get $get): bool => ($get('recorrencia_tipo') ?? 'nenhuma') === 'nenhuma'),
+                    ->visible(fn (Get $get, string $operation): bool =>
+                        $operation === 'edit'
+                        || ($operation === 'create' && ($get('recorrencia_tipo') ?? 'nenhuma') === 'nenhuma')
+                    ),
 
                 Forms\Components\Textarea::make('observacoes')
                     ->label('Observações')
@@ -226,6 +268,7 @@ class EtapasPrestacaoRelationManager extends RelationManager
                         'em_execucao' => 'Em Execução',
                         'em_analise' => 'Em Análise',
                         'devolvido' => 'Devolvido para ajuste',
+                        'com_ressalvas' => 'Validado com ressalva',
                         'realizado' => 'Realizado',
                     ]),
                 Tables\Filters\SelectFilter::make('projeto_financiador_id')
@@ -247,12 +290,16 @@ class EtapasPrestacaoRelationManager extends RelationManager
                         $recorrenciaDia = $data['recorrencia_dia'] ?? null;
                         $recorrenciaInicio = $data['recorrencia_inicio'] ?? null;
                         $recorrenciaRepeticoes = $data['recorrencia_repeticoes'] ?? null;
+                        $ateFinalProjeto = $data['ate_final_projeto'] ?? false;
+                        $datasPersonalizadas = $data['datas_personalizadas'] ?? [];
 
                         unset(
                             $data['recorrencia_tipo'],
                             $data['recorrencia_dia'],
                             $data['recorrencia_inicio'],
-                            $data['recorrencia_repeticoes']
+                            $data['recorrencia_repeticoes'],
+                            $data['ate_final_projeto'],
+                            $data['datas_personalizadas']
                         );
 
                         $data['projeto_id'] = $this->getOwnerRecord()->id;
@@ -260,64 +307,66 @@ class EtapasPrestacaoRelationManager extends RelationManager
                             $data['projeto_financiador_id'] = null;
                         }
 
-                        if ($recorrenciaTipo !== 'nenhuma') {
-                            $datas = [];
-                            $inicio = \Carbon\Carbon::parse($recorrenciaInicio ?? now())->startOfDay();
-                            $cursor = $inicio->copy();
-                            $repeticoes = max(1, (int) $recorrenciaRepeticoes);
+                        $datas = [];
+                        if (RecorrenciaDateGenerator::isFrequenciaPeriodica($recorrenciaTipo)) {
+                            $inicio = $recorrenciaInicio ?? now()->toDateString();
+                            $dia = (int) $recorrenciaDia;
 
-                            if ($recorrenciaTipo === 'dia_mes') {
-                                $dia = (int) $recorrenciaDia;
-                                if ($dia >= 1 && $dia <= 31) {
-                                    $cursor = $cursor->copy()->day(min($dia, $cursor->daysInMonth));
-                                    if ($cursor->lt($inicio)) {
-                                        $cursor = $cursor->addMonthNoOverflow()->day(min($dia, $cursor->daysInMonth));
-                                    }
-                                    while (count($datas) < $repeticoes) {
-                                        $datas[] = $cursor->copy();
-                                        $cursor = $cursor->addMonthNoOverflow()->day(min($dia, $cursor->daysInMonth));
-                                    }
+                            if ($ateFinalProjeto) {
+                                $dataEncerramento = $this->getOwnerRecord()->data_encerramento;
+                                if ($dataEncerramento) {
+                                    $datas = RecorrenciaDateGenerator::gerarAteData(
+                                        $recorrenciaTipo,
+                                        $inicio,
+                                        $dia,
+                                        $dataEncerramento
+                                    );
                                 }
+                            } else {
+                                $datas = RecorrenciaDateGenerator::gerar(
+                                    $recorrenciaTipo,
+                                    $inicio,
+                                    $dia,
+                                    (int) $recorrenciaRepeticoes
+                                );
+                            }
+                        } elseif ($recorrenciaTipo === 'personalizado' && !empty($datasPersonalizadas)) {
+                            $datas = collect($datasPersonalizadas)
+                                ->pluck('data')
+                                ->filter()
+                                ->map(fn ($d) => \Carbon\Carbon::parse($d))
+                                ->sort()
+                                ->values()
+                                ->all();
+                        }
+
+                        $createEtapa = function (array $payload): EtapaPrestacao {
+                            if ($payload['tipo'] !== 'ambas') {
+                                return EtapaPrestacao::create($payload);
                             }
 
+                            $qualitativa = $payload;
+                            $qualitativa['tipo'] = 'qualitativa';
+                            $financeira = $payload;
+                            $financeira['tipo'] = 'financeira';
+
+                            $created = EtapaPrestacao::create($qualitativa);
+                            EtapaPrestacao::create($financeira);
+                            return $created;
+                        };
+
+                        if (!empty($datas)) {
                             $primeira = null;
                             foreach ($datas as $dataLimite) {
                                 $payload = $data;
                                 $payload['data_limite'] = $dataLimite;
-
-                                if ($payload['tipo'] !== 'ambas') {
-                                    $created = EtapaPrestacao::create($payload);
-                                    $primeira ??= $created;
-                                    continue;
-                                }
-
-                                $qualitativa = $payload;
-                                $qualitativa['tipo'] = 'qualitativa';
-                                $quantitativa = $payload;
-                                $quantitativa['tipo'] = 'financeira';
-
-                                $created = EtapaPrestacao::create($qualitativa);
-                                EtapaPrestacao::create($quantitativa);
+                                $created = $createEtapa($payload);
                                 $primeira ??= $created;
                             }
-
-                            return $primeira ?? EtapaPrestacao::create($data);
+                            return $primeira;
                         }
 
-                        if ($data['tipo'] !== 'ambas') {
-                            return EtapaPrestacao::create($data);
-                        }
-
-                        $dataQualitativa = $data;
-                        $dataQualitativa['tipo'] = 'qualitativa';
-
-                        $dataQuantitativa = $data;
-                        $dataQuantitativa['tipo'] = 'financeira';
-
-                        $primeira = EtapaPrestacao::create($dataQualitativa);
-                        EtapaPrestacao::create($dataQuantitativa);
-
-                        return $primeira;
+                        return $createEtapa($data);
                     }),
             ])
             ->actions([

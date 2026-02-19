@@ -33,7 +33,7 @@ class Meta extends Model
         if ($total === 0) {
             return 0;
         }
-        $concluidas = $this->tarefas()->whereIn('status', ['realizado', 'concluido'])->count();
+        $concluidas = $this->tarefas()->whereIn('status', ['realizado', 'concluido', 'com_ressalvas'])->count();
         return round(($concluidas / $total) * 100, 1);
     }
 

@@ -66,6 +66,7 @@ class CalendarioProjetoWidget extends FullCalendarWidget
             $color = match ($tarefa->getStatusNormalizado()) {
                 'realizado' => '#22c55e',
                 'em_execucao' => '#3b82f6',
+                'com_ressalvas' => '#22c55e',
                 'pendente' => '#ef4444',
                 default => '#6b7280',
             };
@@ -127,6 +128,7 @@ class CalendarioProjetoWidget extends FullCalendarWidget
             $color = match ($etapa->getStatusNormalizado()) {
                 'realizado' => '#22c55e',
                 'em_execucao' => '#3b82f6',
+                'com_ressalvas' => '#22c55e',
                 'pendente' => '#ef4444',
                 default => '#6b7280',
             };

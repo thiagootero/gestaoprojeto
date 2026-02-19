@@ -25,6 +25,63 @@
         $metas = $this->getMetas();
     @endphp
 
+    {{-- Anexos --}}
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-6 mb-6">
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <x-heroicon-o-paper-clip class="w-5 h-5" />
+            Anexos
+        </h3>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b dark:border-gray-700">
+                        <th class="text-left py-2 px-3 font-medium text-gray-600 dark:text-gray-400">Tipo</th>
+                        <th class="text-left py-2 px-3 font-medium text-gray-600 dark:text-gray-400">Descrição</th>
+                        <th class="text-left py-2 px-3 font-medium text-gray-600 dark:text-gray-400">Arquivo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($record->anexos as $anexo)
+                        <tr class="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <td class="py-2 px-3 text-gray-900 dark:text-white">
+                                @php
+                                    $tipoLabel = match($anexo->tipo) {
+                                        'contrato' => 'Contrato',
+                                        'plano_trabalho' => 'Plano de Trabalho',
+                                        'orcamento' => 'Orçamento',
+                                        'outros' => 'Outros',
+                                        default => $anexo->tipo,
+                                    };
+                                @endphp
+                                {{ $tipoLabel }}
+                            </td>
+                            <td class="py-2 px-3 text-gray-900 dark:text-white">{{ $anexo->descricao }}</td>
+                            <td class="py-2 px-3">
+                                @if($anexo->arquivo)
+                                    <a
+                                        href="{{ \Illuminate\Support\Facades\Storage::url($anexo->arquivo) }}"
+                                        target="_blank"
+                                        class="text-primary-600 hover:underline"
+                                    >
+                                        Ver arquivo
+                                    </a>
+                                @else
+                                    <span class="text-gray-500 dark:text-gray-400">-</span>
+                                @endif
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="3" class="py-4 text-center text-gray-500 dark:text-gray-400">
+                                Nenhum anexo cadastrado.
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     {{-- Prestações de Contas (oculto para Diretor de Operações e Coordenador de Polo) --}}
     @if(!auth()->user()?->isDiretorOperacoes() && !auth()->user()?->isCoordenadorPolo())
     <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-6 mb-6">

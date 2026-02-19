@@ -19,6 +19,15 @@ class CalendarioProjeto extends Page
 
     protected static ?string $navigationIcon = 'heroicon-o-calendar-days';
 
+    public function getBreadcrumbs(): array
+    {
+        return [
+            ProjetoResource::getUrl('index') => 'Projetos',
+            ProjetoResource::getUrl('view', ['record' => $this->record]) => $this->record->nome,
+            static::getTitle(),
+        ];
+    }
+
     public function mount(int | string $record): void
     {
         $this->record = $this->resolveRecord($record);

@@ -89,6 +89,7 @@ class TarefasEmAnalise extends BaseWidget
                                 ->label('Decisão')
                                 ->options([
                                     'aprovar' => 'Aprovar',
+                                    'aprovar_ressalva' => 'Aprovar com ressalvas',
                                     'devolver' => 'Devolver para ajuste',
                                 ])
                                 ->required()
@@ -99,7 +100,8 @@ class TarefasEmAnalise extends BaseWidget
                                 ->label('Observação')
                                 ->rows(3)
                                 ->maxLength(2000)
-                                ->visible(fn (Forms\Get $get): bool => $get('decisao') === 'aprovar'),
+                                ->required(fn (Forms\Get $get): bool => $get('decisao') === 'aprovar_ressalva')
+                                ->visible(fn (Forms\Get $get): bool => in_array($get('decisao'), ['aprovar', 'aprovar_ressalva'], true)),
 
                             Forms\Components\Textarea::make('motivo')
                                 ->label('Motivo da devolução')
@@ -112,9 +114,10 @@ class TarefasEmAnalise extends BaseWidget
                     ->action(function (Tarefa $record, array $data) {
                         $user = auth()->user();
 
-                        if ($data['decisao'] === 'aprovar') {
+                        if (in_array($data['decisao'], ['aprovar', 'aprovar_ressalva'], true)) {
+                            $status = $data['decisao'] === 'aprovar_ressalva' ? 'com_ressalvas' : 'realizado';
                             $record->update([
-                                'status' => 'realizado',
+                                'status' => $status,
                                 'comprovacao_validada' => true,
                                 'validado_por' => $user->id,
                                 'validado_em' => now(),
@@ -123,7 +126,9 @@ class TarefasEmAnalise extends BaseWidget
                             if (!empty($data['observacao'])) {
                                 $obs = $record->observacoes;
                                 $record->update([
-                                    'observacoes' => ($obs ? $obs . "\n" : '') . '[Validado por ' . $user->name . '] ' . $data['observacao'],
+                                    'observacoes' => ($obs ? $obs . "\n" : '') . ($data['decisao'] === 'aprovar_ressalva'
+                                        ? '[Aprovado com ressalvas por ' . $user->name . '] '
+                                        : '[Validado por ' . $user->name . '] ') . $data['observacao'],
                                 ]);
                             }
 

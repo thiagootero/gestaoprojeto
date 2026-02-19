@@ -11,7 +11,8 @@
       "Bash(composer require:*)",
       "Bash(php artisan tinker:*)",
       "Bash(php artisan migrate:*)",
-      "Bash(php artisan:*)"
+      "Bash(php artisan:*)",
+      "Bash(php -l:*)"
     ]
   }
 }

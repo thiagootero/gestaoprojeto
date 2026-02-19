@@ -74,6 +74,7 @@ class EtapaPrestacao extends Model
             'em_execucao' => 'Em Execução',
             'em_analise' => 'Em Análise',
             'devolvido' => 'Devolvido para ajuste',
+            'com_ressalvas' => 'Validado com ressalva',
             'realizado' => 'Realizado',
             default => 'Pendente',
         };
@@ -86,6 +87,7 @@ class EtapaPrestacao extends Model
             'em_execucao' => 'info',
             'em_analise' => 'warning',
             'devolvido' => 'danger',
+            'com_ressalvas' => 'success',
             'realizado' => 'success',
             default => 'gray',
         };
@@ -95,9 +97,10 @@ class EtapaPrestacao extends Model
     {
         return match($this->status) {
             'pendente', 'rejeitada' => 'pendente',
-            'em_execucao', 'em_elaboracao', 'enviada', 'com_ressalvas' => 'em_execucao',
+            'em_execucao', 'em_elaboracao', 'enviada' => 'em_execucao',
             'em_analise' => 'em_analise',
             'devolvido' => 'devolvido',
+            'com_ressalvas' => 'com_ressalvas',
             'realizado', 'aprovada' => 'realizado',
             default => 'pendente',
         };

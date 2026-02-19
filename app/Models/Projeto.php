@@ -15,9 +15,12 @@ class Projeto extends Model
     protected $fillable = [
         'nome',
         'descricao',
+        'descricao_breve',
         'data_inicio',
         'data_encerramento',
         'encerramento_contratos',
+        'data_limite_prorrogacao_contrato',
+        'data_aditivo',
         'status',
         'observacoes',
     ];
@@ -28,6 +31,8 @@ class Projeto extends Model
             'data_inicio' => 'date',
             'data_encerramento' => 'date',
             'encerramento_contratos' => 'date',
+            'data_limite_prorrogacao_contrato' => 'date',
+            'data_aditivo' => 'date',
         ];
     }
 
@@ -40,6 +45,12 @@ class Projeto extends Model
     public function financiadores(): BelongsToMany
     {
         return $this->belongsToMany(Financiador::class, 'projeto_financiador')
+            ->withTimestamps();
+    }
+
+    public function anexos(): BelongsToMany
+    {
+        return $this->belongsToMany(Anexo::class, 'anexo_projeto')
             ->withTimestamps();
     }
 
@@ -69,7 +80,7 @@ class Projeto extends Model
         if ($total === 0) {
             return 0;
         }
-        $concluidas = $this->tarefas()->whereIn('tarefas.status', ['realizado', 'concluido'])->count();
+        $concluidas = $this->tarefas()->whereIn('tarefas.status', ['realizado', 'concluido', 'com_ressalvas'])->count();
         return round(($concluidas / $total) * 100, 1);
     }
 

@@ -5,6 +5,7 @@ namespace App\Filament\Resources\MetaResource\RelationManagers;
 use App\Models\Polo;
 use App\Models\Tarefa;
 use App\Models\User;
+use App\Support\RecorrenciaDateGenerator;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
@@ -38,7 +39,8 @@ class TarefasRelationManager extends RelationManager
                     ->multiple()
                     ->native()
                     ->dehydrated(false)
-                    ->helperText('Selecione um ou mais polos. Deixe vazio para tarefa administrativa'),
+                    ->helperText('Selecione um ou mais polos. Deixe vazio para tarefa administrativa')
+                    ->visible(fn (string $operation): bool => $operation === 'create'),
 
                 Forms\Components\Select::make('responsaveis')
                     ->label('Responsáveis')
@@ -47,45 +49,99 @@ class TarefasRelationManager extends RelationManager
                     ->searchable()
                     ->preload(),
 
+                // --- Campos de recorrência (apenas na criação) ---
                 Forms\Components\Select::make('recorrencia_tipo')
                     ->label('Recorrência')
                     ->options([
                         'nenhuma' => 'Sem recorrência',
-                        'dia_mes' => 'Todo dia X',
+                        'mensal' => 'Mensal',
+                        'bimestral' => 'Bimestral',
+                        'trimestral' => 'Trimestral',
+                        'semestral' => 'Semestral',
+                        'anual' => 'Anual',
+                        'personalizado' => 'Datas personalizadas',
                     ])
                     ->native(false)
                     ->default('nenhuma')
-                    ->reactive(),
+                    ->reactive()
+                    ->visible(fn (string $operation): bool => $operation === 'create'),
 
                 Forms\Components\DatePicker::make('recorrencia_inicio')
                     ->label('Iniciar em')
                     ->displayFormat('d/m/Y')
                     ->native()
-                    ->required(fn (Get $get): bool => $get('recorrencia_tipo') !== 'nenhuma')
-                    ->visible(fn (Get $get): bool => $get('recorrencia_tipo') !== 'nenhuma'),
+                    ->required(fn (Get $get): bool => RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma'))
+                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
 
                 Forms\Components\TextInput::make('recorrencia_dia')
                     ->label('Dia do mês')
                     ->numeric()
                     ->minValue(1)
                     ->maxValue(31)
-                    ->required(fn (Get $get): bool => $get('recorrencia_tipo') === 'dia_mes')
-                    ->visible(fn (Get $get): bool => $get('recorrencia_tipo') === 'dia_mes'),
+                    ->required(fn (Get $get): bool => RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma'))
+                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
+
+                Forms\Components\Toggle::make('ate_final_projeto')
+                    ->label('Até o final do projeto')
+                    ->default(false)
+                    ->reactive()
+                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma')),
 
                 Forms\Components\TextInput::make('recorrencia_repeticoes')
                     ->label('Quantidade de repetições')
                     ->numeric()
                     ->minValue(1)
                     ->maxValue(120)
-                    ->required(fn (Get $get): bool => $get('recorrencia_tipo') !== 'nenhuma')
-                    ->visible(fn (Get $get): bool => $get('recorrencia_tipo') !== 'nenhuma'),
+                    ->required(fn (Get $get): bool => RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma') && !$get('ate_final_projeto'))
+                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && RecorrenciaDateGenerator::isFrequenciaPeriodica($get('recorrencia_tipo') ?? 'nenhuma') && !$get('ate_final_projeto')),
 
+                Forms\Components\Repeater::make('datas_personalizadas')
+                    ->label('Datas')
+                    ->schema([
+                        Forms\Components\DatePicker::make('data')
+                            ->label('Data')
+                            ->displayFormat('d/m/Y')
+                            ->native()
+                            ->required(),
+                    ])
+                    ->columns(1)
+                    ->minItems(1)
+                    ->defaultItems(1)
+                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && ($get('recorrencia_tipo') ?? 'nenhuma') === 'personalizado')
+                    ->columnSpanFull(),
+
+                // --- Data única (criação sem recorrência OU edição sem ocorrências) ---
                 Forms\Components\DatePicker::make('data_fim')
                     ->label('Data Fim/Prazo')
                     ->displayFormat('d/m/Y')
                     ->native()
-                    ->required(fn (Get $get): bool => ($get('recorrencia_tipo') ?? 'nenhuma') === 'nenhuma')
-                    ->visible(fn (Get $get): bool => ($get('recorrencia_tipo') ?? 'nenhuma') === 'nenhuma'),
+                    ->required(fn (Get $get, string $operation, ?Tarefa $record): bool =>
+                        ($operation === 'create' && ($get('recorrencia_tipo') ?? 'nenhuma') === 'nenhuma')
+                        || ($operation === 'edit' && $record && !$record->ocorrencias()->exists())
+                    )
+                    ->visible(fn (Get $get, string $operation, ?Tarefa $record): bool =>
+                        ($operation === 'create' && ($get('recorrencia_tipo') ?? 'nenhuma') === 'nenhuma')
+                        || ($operation === 'edit' && $record && !$record->ocorrencias()->exists())
+                    ),
+
+                // --- Ocorrências (edição de tarefa que já possui ocorrências) ---
+                Forms\Components\Repeater::make('ocorrencias')
+                    ->label('Datas das Ocorrências')
+                    ->relationship('ocorrencias')
+                    ->schema([
+                        Forms\Components\DatePicker::make('data_fim')
+                            ->label('Data')
+                            ->displayFormat('d/m/Y')
+                            ->native()
+                            ->required(),
+                    ])
+                    ->columns(1)
+                    ->defaultItems(0)
+                    ->addActionLabel('Adicionar data')
+                    ->visible(fn (string $operation, ?Tarefa $record): bool =>
+                        $operation === 'edit' && $record !== null && $record->ocorrencias()->exists()
+                    )
+                    ->columnSpanFull(),
 
                 Forms\Components\Textarea::make('como_fazer')
                     ->label('Como Fazer')
@@ -164,6 +220,7 @@ class TarefasRelationManager extends RelationManager
                         'em_execucao' => 'Em Execução',
                         'em_analise' => 'Em Análise',
                         'devolvido' => 'Devolvido para ajuste',
+                        'com_ressalvas' => 'Validado com ressalva',
                         'realizado' => 'Realizado',
                     ]),
                 Tables\Filters\TernaryFilter::make('comprovacao_validada')
@@ -178,80 +235,78 @@ class TarefasRelationManager extends RelationManager
                         $recorrenciaDia = $data['recorrencia_dia'] ?? null;
                         $recorrenciaInicio = $data['recorrencia_inicio'] ?? null;
                         $recorrenciaRepeticoes = $data['recorrencia_repeticoes'] ?? null;
-                        unset($data['polo_ids']);
-                        unset($data['responsaveis']);
+                        $ateFinalProjeto = $data['ate_final_projeto'] ?? false;
+                        $datasPersonalizadas = $data['datas_personalizadas'] ?? [];
                         unset(
+                            $data['polo_ids'],
+                            $data['responsaveis'],
                             $data['recorrencia_tipo'],
                             $data['recorrencia_dia'],
                             $data['recorrencia_inicio'],
-                            $data['recorrencia_repeticoes']
+                            $data['recorrencia_repeticoes'],
+                            $data['ate_final_projeto'],
+                            $data['datas_personalizadas']
                         );
                         $data['meta_id'] = $this->getOwnerRecord()->id;
 
                         $datas = [];
-                        if ($recorrenciaTipo !== 'nenhuma') {
-                            $inicio = \Carbon\Carbon::parse($recorrenciaInicio ?? now())->startOfDay();
-                            $cursor = $inicio->copy();
-                            $repeticoes = max(1, (int) $recorrenciaRepeticoes);
+                        if (RecorrenciaDateGenerator::isFrequenciaPeriodica($recorrenciaTipo)) {
+                            $inicio = $recorrenciaInicio ?? now()->toDateString();
+                            $dia = (int) $recorrenciaDia;
 
-                            if ($recorrenciaTipo === 'dia_mes') {
-                                $dia = (int) $recorrenciaDia;
-                                if ($dia >= 1 && $dia <= 31) {
-                                    $cursor = $cursor->copy()->day(min($dia, $cursor->daysInMonth));
-                                    if ($cursor->lt($inicio)) {
-                                        $cursor = $cursor->addMonthNoOverflow()->day(min($dia, $cursor->daysInMonth));
-                                    }
-                                    while (count($datas) < $repeticoes) {
-                                        $datas[] = $cursor->copy();
-                                        $cursor = $cursor->addMonthNoOverflow()->day(min($dia, $cursor->daysInMonth));
-                                    }
+                            if ($ateFinalProjeto) {
+                                $dataEncerramento = $this->getOwnerRecord()->projeto->data_encerramento;
+                                if ($dataEncerramento) {
+                                    $datas = RecorrenciaDateGenerator::gerarAteData(
+                                        $recorrenciaTipo,
+                                        $inicio,
+                                        $dia,
+                                        $dataEncerramento
+                                    );
                                 }
+                            } else {
+                                $datas = RecorrenciaDateGenerator::gerar(
+                                    $recorrenciaTipo,
+                                    $inicio,
+                                    $dia,
+                                    (int) $recorrenciaRepeticoes
+                                );
                             }
+                        } elseif ($recorrenciaTipo === 'personalizado' && !empty($datasPersonalizadas)) {
+                            $datas = collect($datasPersonalizadas)
+                                ->pluck('data')
+                                ->filter()
+                                ->map(fn ($d) => \Carbon\Carbon::parse($d))
+                                ->sort()
+                                ->values()
+                                ->all();
                         }
 
-                        if (empty($poloIds)) {
+                        $createTarefa = function (array $payload) use ($datas, $responsaveis): Tarefa {
                             if (!empty($datas)) {
-                                $payload = $data;
                                 $payload['data_fim'] = $datas[0];
-                                $created = Tarefa::create($payload);
+                            }
+                            $created = Tarefa::create($payload);
+                            if (!empty($datas)) {
                                 $created->ocorrencias()->createMany(
                                     collect($datas)->map(fn ($d) => ['data_fim' => $d])->all()
                                 );
-                                if (!empty($responsaveis)) {
-                                    $created->responsaveis()->sync($responsaveis);
-                                }
-                                return $created;
                             }
-
-                            $created = Tarefa::create($data);
                             if (!empty($responsaveis)) {
                                 $created->responsaveis()->sync($responsaveis);
                             }
                             return $created;
+                        };
+
+                        if (empty($poloIds)) {
+                            return $createTarefa($data);
                         }
 
                         $primeira = null;
                         foreach ($poloIds as $poloId) {
-                            if (!empty($datas)) {
-                                $payload = $data;
-                                $payload['polo_id'] = $poloId;
-                                $payload['data_fim'] = $datas[0];
-                                $created = Tarefa::create($payload);
-                                $created->ocorrencias()->createMany(
-                                    collect($datas)->map(fn ($d) => ['data_fim' => $d])->all()
-                                );
-                                if (!empty($responsaveis)) {
-                                    $created->responsaveis()->sync($responsaveis);
-                                }
-                                $primeira ??= $created;
-                                continue;
-                            }
                             $payload = $data;
                             $payload['polo_id'] = $poloId;
-                            $created = Tarefa::create($payload);
-                            if (!empty($responsaveis)) {
-                                $created->responsaveis()->sync($responsaveis);
-                            }
+                            $created = $createTarefa($payload);
                             $primeira ??= $created;
                         }
 

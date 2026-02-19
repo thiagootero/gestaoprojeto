@@ -85,6 +85,7 @@ class Tarefa extends Model
             'em_execucao' => 'Em Execução',
             'em_analise' => 'Em Análise',
             'devolvido' => 'Devolvido para ajuste',
+            'com_ressalvas' => 'Validado com ressalva',
             'realizado' => 'Realizado',
             default => 'Pendente',
         };
@@ -97,6 +98,7 @@ class Tarefa extends Model
             'em_execucao' => 'info',
             'em_analise' => 'warning',
             'devolvido' => 'danger',
+            'com_ressalvas' => 'success',
             'realizado' => 'success',
             default => 'gray',
         };
@@ -107,7 +109,7 @@ class Tarefa extends Model
         if (!$this->data_fim) {
             return false;
         }
-        return $this->data_fim->isPast() && !in_array($this->status, ['realizado', 'concluido']);
+        return $this->data_fim->isPast() && !in_array($this->status, ['realizado', 'concluido', 'com_ressalvas']);
     }
 
     public function getVencendoAttribute(): bool
@@ -116,7 +118,7 @@ class Tarefa extends Model
             return false;
         }
         $diasRestantes = now()->startOfDay()->diffInDays($this->data_fim, false);
-        return $diasRestantes >= 0 && $diasRestantes <= 7 && !in_array($this->status, ['realizado', 'concluido']);
+        return $diasRestantes >= 0 && $diasRestantes <= 7 && !in_array($this->status, ['realizado', 'concluido', 'com_ressalvas']);
     }
 
     public function getStatusNormalizado(): string
@@ -126,6 +128,7 @@ class Tarefa extends Model
             'em_execucao', 'em_andamento' => 'em_execucao',
             'em_analise' => 'em_analise',
             'devolvido' => 'devolvido',
+            'com_ressalvas' => 'com_ressalvas',
             'realizado', 'concluido' => 'realizado',
             default => 'pendente',
         };

@@ -37,6 +37,15 @@ class CronogramaOperacional extends Page implements HasActions
 
     protected static ?string $navigationIcon = 'heroicon-o-table-cells';
 
+    public function getBreadcrumbs(): array
+    {
+        return [
+            ProjetoResource::getUrl('index') => 'Projetos',
+            ProjetoResource::getUrl('view', ['record' => $this->record]) => $this->record->nome,
+            static::getTitle(),
+        ];
+    }
+
     public ?int $year = null;
     public ?string $month = null;
     public ?int $metaId = null;
@@ -60,7 +69,7 @@ class CronogramaOperacional extends Page implements HasActions
     public function getAnos(): array
     {
         $inicio = $this->record->data_inicio?->year ?? now()->year;
-        $fim = $this->record->data_encerramento?->year ?? $inicio;
+        $fim = $this->getFimCronograma()->year;
 
         if ($fim < $inicio) {
             $fim = $inicio;
@@ -73,7 +82,7 @@ class CronogramaOperacional extends Page implements HasActions
     {
         $ano = $this->year ?? now()->year;
         $inicioProjeto = $this->record->data_inicio?->copy()->startOfMonth() ?? Carbon::create($ano, 1, 1);
-        $fimProjeto = $this->record->data_encerramento?->copy()->startOfMonth() ?? Carbon::create($ano, 12, 1);
+        $fimProjeto = $this->getFimCronograma()->copy()->startOfMonth();
 
         $inicio = Carbon::create($ano, 1, 1)->startOfMonth();
         $fim = Carbon::create($ano, 12, 1)->startOfMonth();
@@ -110,7 +119,7 @@ class CronogramaOperacional extends Page implements HasActions
     {
         $ano = $this->year ?? now()->year;
         $inicioProjeto = $this->record->data_inicio?->copy()->startOfMonth() ?? Carbon::create($ano, 1, 1);
-        $fimProjeto = $this->record->data_encerramento?->copy()->startOfMonth() ?? Carbon::create($ano, 12, 1);
+        $fimProjeto = $this->getFimCronograma()->copy()->startOfMonth();
 
         $inicio = Carbon::create($ano, 1, 1)->startOfMonth();
         $fim = Carbon::create($ano, 12, 1)->startOfMonth();
@@ -207,6 +216,45 @@ class CronogramaOperacional extends Page implements HasActions
                 'tarefas' => $tarefas,
             ];
         })->toArray();
+    }
+
+    private function getFimCronograma(): Carbon
+    {
+        $fimProjeto = $this->record->data_encerramento?->copy();
+
+        $maxTarefa = $this->record->metas
+            ->flatMap(fn ($meta) => $meta->tarefas)
+            ->flatMap(function ($tarefa) {
+                $datas = [];
+                if ($tarefa->data_inicio) {
+                    $datas[] = $tarefa->data_inicio;
+                }
+                if ($tarefa->data_fim) {
+                    $datas[] = $tarefa->data_fim;
+                }
+                if ($tarefa->ocorrencias->isNotEmpty()) {
+                    foreach ($tarefa->ocorrencias as $ocorrencia) {
+                        if ($ocorrencia->data_fim) {
+                            $datas[] = $ocorrencia->data_fim;
+                        }
+                    }
+                }
+                return $datas;
+            })
+            ->filter()
+            ->max();
+
+        if (!$fimProjeto && $maxTarefa) {
+            return $maxTarefa->copy();
+        }
+        if (!$fimProjeto) {
+            return now();
+        }
+        if ($maxTarefa && $maxTarefa->gt($fimProjeto)) {
+            return $maxTarefa->copy();
+        }
+
+        return $fimProjeto->copy();
     }
 
     public function getTarefasMensal(): array
@@ -406,6 +454,7 @@ class CronogramaOperacional extends Page implements HasActions
                     ->label('Decisão')
                     ->options([
                         'aprovar' => 'Aprovar',
+                        'aprovar_ressalva' => 'Aprovar com ressalvas',
                         'rejeitar' => 'Devolver para ajuste',
                     ])
                     ->required()
@@ -416,7 +465,8 @@ class CronogramaOperacional extends Page implements HasActions
                     ->label('Observação')
                     ->rows(3)
                     ->maxLength(2000)
-                    ->visible(fn (Forms\Get $get): bool => $get('decisao') === 'aprovar'),
+                    ->required(fn (Forms\Get $get): bool => $get('decisao') === 'aprovar_ressalva')
+                    ->visible(fn (Forms\Get $get): bool => in_array($get('decisao'), ['aprovar', 'aprovar_ressalva'], true)),
 
                 Forms\Components\Textarea::make('motivo')
                     ->label('Motivo da devolução')
@@ -441,9 +491,10 @@ class CronogramaOperacional extends Page implements HasActions
                     return;
                 }
 
-                if ($data['decisao'] === 'aprovar') {
+                if (in_array($data['decisao'], ['aprovar', 'aprovar_ressalva'], true)) {
+                    $status = $data['decisao'] === 'aprovar_ressalva' ? 'com_ressalvas' : 'realizado';
                     $updateData = [
-                        'status' => 'realizado',
+                        'status' => $status,
                         'comprovacao_validada' => true,
                         'validado_por' => $user->id,
                         'validado_em' => now(),
@@ -451,15 +502,26 @@ class CronogramaOperacional extends Page implements HasActions
 
                     if (!empty($data['observacao'])) {
                         $obs = $tarefa->observacoes;
-                        $updateData['observacoes'] = ($obs ? $obs . "\n" : '') . '[Validado por ' . $user->name . '] ' . $data['observacao'];
+                        $prefix = $data['decisao'] === 'aprovar_ressalva'
+                            ? '[Aprovado com ressalvas por ' . $user->name . '] '
+                            : '[Validado por ' . $user->name . '] ';
+                        $updateData['observacoes'] = ($obs ? $obs . "\n" : '') . $prefix . $data['observacao'];
                     }
 
                     $tarefa->update($updateData);
 
-                    Notification::make()
-                        ->title('Tarefa aprovada com sucesso')
-                        ->success()
-                        ->send();
+                    $notification = Notification::make()
+                        ->title($data['decisao'] === 'aprovar_ressalva'
+                            ? 'Tarefa aprovada com ressalvas'
+                            : 'Tarefa aprovada com sucesso');
+
+                    if ($data['decisao'] === 'aprovar_ressalva') {
+                        $notification->warning();
+                    } else {
+                        $notification->success();
+                    }
+
+                    $notification->send();
 
                     $enviadoPor = NotificacaoCentral::ultimoEnvioTarefa($tarefa);
                     if ($enviadoPor && $enviadoPor->id !== $user->id) {
@@ -536,6 +598,13 @@ class CronogramaOperacional extends Page implements HasActions
                                     $html .= '</div>';
                                     $html .= '<p class="text-sm text-gray-700 dark:text-gray-300">' . e($linha) . '</p>';
                                     $html .= '</div>';
+                                } elseif (str_starts_with($linha, '[Aprovado com ressalvas por ')) {
+                                    $html .= '<div class="border-l-4 border-green-400 bg-green-50 dark:bg-green-950 dark:border-green-600 rounded-r-lg p-3">';
+                                    $html .= '<div class="flex items-center gap-2 mb-1">';
+                                    $html .= '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">Validado com ressalva</span>';
+                                    $html .= '</div>';
+                                    $html .= '<p class="text-sm text-gray-700 dark:text-gray-300">' . e($linha) . '</p>';
+                                    $html .= '</div>';
                                 } elseif (str_starts_with($linha, '[Validado por ') || str_starts_with($linha, '[Validação]')) {
                                     $html .= '<div class="border-l-4 border-green-400 bg-green-50 dark:bg-green-950 dark:border-green-600 rounded-r-lg p-3">';
                                     $html .= '<div class="flex items-center gap-2 mb-1">';
@@ -554,7 +623,8 @@ class CronogramaOperacional extends Page implements HasActions
                         if ($tarefa->validadoPorUser && $tarefa->validado_em) {
                             $html .= '<div class="border-l-4 border-green-400 bg-green-50 dark:bg-green-950 dark:border-green-600 rounded-r-lg p-3">';
                             $html .= '<div class="flex items-center gap-2">';
-                            $html .= '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">Aprovado</span>';
+                            $html .= '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">'
+                                . ($tarefa->status === 'com_ressalvas' ? 'Validado com ressalva' : 'Validado') . '</span>';
                             $html .= '<span class="text-sm font-medium text-gray-900 dark:text-white">' . e($tarefa->validadoPorUser->name) . '</span>';
                             $html .= '<span class="text-xs text-gray-500 dark:text-gray-400">' . $tarefa->validado_em->format('d/m/Y H:i') . '</span>';
                             $html .= '</div>';

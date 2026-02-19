@@ -50,6 +50,17 @@ class ProjetoResource extends Resource
                                     ->maxLength(200)
                                     ->columnSpanFull(),
 
+                                Forms\Components\Textarea::make('descricao')
+                                    ->label('Descrição')
+                                    ->rows(3)
+                                    ->maxLength(2000)
+                                    ->columnSpanFull(),
+
+                                Forms\Components\TextInput::make('descricao_breve')
+                                    ->label('Descrição breve')
+                                    ->maxLength(255)
+                                    ->columnSpanFull(),
+
                                 Forms\Components\DatePicker::make('data_inicio')
                                     ->label('Data de Início')
                                     ->required()
@@ -59,6 +70,16 @@ class ProjetoResource extends Resource
                                 Forms\Components\DatePicker::make('data_encerramento')
                                     ->label('Data de Encerramento')
                                     ->required()
+                                    ->displayFormat('d/m/Y')
+                                    ->native(),
+
+                                Forms\Components\DatePicker::make('data_limite_prorrogacao_contrato')
+                                    ->label('Data limite para prorrogação do contrato')
+                                    ->displayFormat('d/m/Y')
+                                    ->native(),
+
+                                Forms\Components\DatePicker::make('data_aditivo')
+                                    ->label('Data de aditivo')
                                     ->displayFormat('d/m/Y')
                                     ->native(),
 
@@ -80,6 +101,47 @@ class ProjetoResource extends Resource
                                     ->searchable()
                                     ->preload()
                                     ->columnSpanFull(),
+
+                                Forms\Components\Section::make('Anexos')
+                                    ->schema([
+                                        Forms\Components\Repeater::make('anexos')
+                                            ->relationship('anexos')
+                                            ->schema([
+                                                Forms\Components\Select::make('tipo')
+                                                    ->label('Tipo')
+                                                    ->options([
+                                                        'contrato' => 'Contrato',
+                                                        'plano_trabalho' => 'Plano de Trabalho',
+                                                        'orcamento' => 'Orçamento',
+                                                        'outros' => 'Outros',
+                                                    ])
+                                                    ->required()
+                                                    ->native(false),
+
+                                                Forms\Components\Textarea::make('descricao')
+                                                    ->label('Descrição')
+                                                    ->required()
+                                                    ->rows(2)
+                                                    ->columnSpanFull(),
+
+                                                Forms\Components\FileUpload::make('arquivo')
+                                                    ->label('Arquivo')
+                                                    ->disk('public')
+                                                    ->directory('anexos')
+                                                    ->preserveFilenames()
+                                                    ->openable()
+                                                    ->downloadable()
+                                                    ->columnSpanFull(),
+                                            ])
+                                            ->columns(2)
+                                            ->addActionLabel('+')
+                                            ->columnSpanFull(),
+                                    ])
+                                    ->collapsible()
+                                    ->visible(fn ($livewire): bool => $livewire instanceof \Filament\Resources\Pages\CreateRecord
+                                        || $livewire instanceof \Filament\Resources\Pages\EditRecord)
+                                    ->columnSpanFull(),
+
                             ])
                             ->columns(2),
                     ])
@@ -175,6 +237,7 @@ class ProjetoResource extends Resource
     public static function getRelations(): array
     {
         return [
+            RelationManagers\AnexosRelationManager::class,
             RelationManagers\EtapasPrestacaoRelationManager::class,
             RelationManagers\MetasRelationManager::class,
         ];

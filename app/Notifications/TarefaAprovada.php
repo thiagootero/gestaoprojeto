@@ -29,30 +29,43 @@ class TarefaAprovada extends Notification implements ShouldQueue
 
     public function toDatabase(object $notifiable): array
     {
+        $comRessalvas = $this->tarefa->status === 'com_ressalvas';
+        $titulo = $comRessalvas ? 'Tarefa validada com ressalva' : 'Tarefa aprovada';
         $body = "{$this->tarefa->descricao} | {$this->getProjetoNome()} | Aprovado por {$this->aprovadoPor->name}";
 
-        return FilamentNotification::make()
-            ->title('Tarefa aprovada')
+        $notification = FilamentNotification::make()
+            ->title($titulo)
             ->body($body)
             ->icon('heroicon-o-check-circle')
-            ->success()
             ->actions([
                 Action::make('ver')
                     ->label('Ver')
                     ->url($this->getUrl(), shouldOpenInNewTab: true)
                     ->markAsRead(),
-            ])
-            ->getDatabaseMessage();
+            ]);
+
+        if ($comRessalvas) {
+            $notification->warning();
+        } else {
+            $notification->success();
+        }
+
+        return $notification->getDatabaseMessage();
     }
 
     public function toMail(object $notifiable): MailMessage
     {
         $projeto = $this->getProjetoNome();
+        $comRessalvas = $this->tarefa->status === 'com_ressalvas';
+        $assunto = $comRessalvas ? 'Tarefa validada com ressalva' : 'Tarefa aprovada';
+        $linha = $comRessalvas
+            ? "A tarefa \"{$this->tarefa->descricao}\" foi validada com ressalva."
+            : "A tarefa \"{$this->tarefa->descricao}\" foi aprovada.";
 
         return (new MailMessage)
-            ->subject("[SGP] Tarefa aprovada - {$projeto}")
+            ->subject("[SGP] {$assunto} - {$projeto}")
             ->greeting("Olá, {$notifiable->name}!")
-            ->line("A tarefa \"{$this->tarefa->descricao}\" foi aprovada.")
+            ->line($linha)
             ->line("Aprovado por: {$this->aprovadoPor->name}")
             ->line("Projeto: {$projeto}")
             ->action('Ver no sistema', $this->getUrl())

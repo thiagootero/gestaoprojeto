@@ -37,6 +37,15 @@ class CronogramaPrestacaoContas extends Page implements HasActions
 
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
 
+    public function getBreadcrumbs(): array
+    {
+        return [
+            ProjetoResource::getUrl('index') => 'Projetos',
+            ProjetoResource::getUrl('view', ['record' => $this->record]) => $this->record->nome,
+            static::getTitle(),
+        ];
+    }
+
     public ?string $month = null;
     public ?string $origem = null;
     public ?int $financiadorId = null;
@@ -288,6 +297,13 @@ class CronogramaPrestacaoContas extends Page implements HasActions
                                     $html .= '</div>';
                                     $html .= '<p class="text-sm text-gray-700 dark:text-gray-300">' . e($linha) . '</p>';
                                     $html .= '</div>';
+                                } elseif (str_starts_with($linha, '[Aprovado com ressalvas por ')) {
+                                    $html .= '<div class="border-l-4 border-green-400 bg-green-50 dark:bg-green-950 dark:border-green-600 rounded-r-lg p-3">';
+                                    $html .= '<div class="flex items-center gap-2 mb-1">';
+                                    $html .= '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">Validado com ressalva</span>';
+                                    $html .= '</div>';
+                                    $html .= '<p class="text-sm text-gray-700 dark:text-gray-300">' . e($linha) . '</p>';
+                                    $html .= '</div>';
                                 } elseif (str_starts_with($linha, '[Validado por ') || str_starts_with($linha, '[Validação]')) {
                                     $html .= '<div class="border-l-4 border-green-400 bg-green-50 dark:bg-green-950 dark:border-green-600 rounded-r-lg p-3">';
                                     $html .= '<div class="flex items-center gap-2 mb-1">';
@@ -307,7 +323,8 @@ class CronogramaPrestacaoContas extends Page implements HasActions
                         if ($etapa->validadoPorUser && $etapa->validado_em) {
                             $html .= '<div class="border-l-4 border-green-400 bg-green-50 dark:bg-green-950 dark:border-green-600 rounded-r-lg p-3">';
                             $html .= '<div class="flex items-center gap-2 mb-1">';
-                            $html .= '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">Aprovado</span>';
+                            $html .= '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">'
+                                . ($etapa->status === 'com_ressalvas' ? 'Validado com ressalva' : 'Validado') . '</span>';
                             $html .= '<span class="text-sm font-medium text-gray-900 dark:text-white">' . e($etapa->validadoPorUser->name) . '</span>';
                             $html .= '<span class="text-xs text-gray-500 dark:text-gray-400">' . $etapa->validado_em->format('d/m/Y H:i') . '</span>';
                             $html .= '</div>';
@@ -360,6 +377,7 @@ class CronogramaPrestacaoContas extends Page implements HasActions
                     ->label('Decisão')
                     ->options([
                         'aprovar' => 'Aprovar',
+                        'aprovar_ressalva' => 'Aprovar com ressalvas',
                         'rejeitar' => 'Devolver para ajuste',
                     ])
                     ->required()
@@ -370,7 +388,8 @@ class CronogramaPrestacaoContas extends Page implements HasActions
                     ->label('Observação')
                     ->rows(3)
                     ->maxLength(2000)
-                    ->visible(fn (Forms\Get $get): bool => $get('decisao') === 'aprovar'),
+                    ->required(fn (Forms\Get $get): bool => $get('decisao') === 'aprovar_ressalva')
+                    ->visible(fn (Forms\Get $get): bool => in_array($get('decisao'), ['aprovar', 'aprovar_ressalva'], true)),
 
                 Forms\Components\Textarea::make('motivo')
                     ->label('Motivo da devolução')
@@ -395,24 +414,36 @@ class CronogramaPrestacaoContas extends Page implements HasActions
                     return;
                 }
 
-                if ($data['decisao'] === 'aprovar') {
+                if (in_array($data['decisao'], ['aprovar', 'aprovar_ressalva'], true)) {
+                    $status = $data['decisao'] === 'aprovar_ressalva' ? 'com_ressalvas' : 'realizado';
                     $updateData = [
-                        'status' => 'realizado',
+                        'status' => $status,
                         'validado_por' => $user->id,
                         'validado_em' => now(),
                     ];
 
                     if (!empty($data['observacao'])) {
                         $obs = $etapa->observacoes;
-                        $updateData['observacoes'] = ($obs ? $obs . "\n" : '') . '[Validado por ' . $user->name . '] ' . $data['observacao'];
+                        $prefix = $data['decisao'] === 'aprovar_ressalva'
+                            ? '[Aprovado com ressalvas por ' . $user->name . '] '
+                            : '[Validado por ' . $user->name . '] ';
+                        $updateData['observacoes'] = ($obs ? $obs . "\n" : '') . $prefix . $data['observacao'];
                     }
 
                     $etapa->update($updateData);
 
-                    Notification::make()
-                        ->title('Prestação aprovada com sucesso')
-                        ->success()
-                        ->send();
+                    $notification = Notification::make()
+                        ->title($data['decisao'] === 'aprovar_ressalva'
+                            ? 'Prestação aprovada com ressalvas'
+                            : 'Prestação aprovada com sucesso');
+
+                    if ($data['decisao'] === 'aprovar_ressalva') {
+                        $notification->warning();
+                    } else {
+                        $notification->success();
+                    }
+
+                    $notification->send();
 
                     $enviadoPor = NotificacaoCentral::ultimoEnvioPrestacao($etapa);
                     if ($enviadoPor && $enviadoPor->id !== $user->id) {

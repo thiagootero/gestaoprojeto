@@ -192,9 +192,9 @@
                                                     Aguardando validação
                                                 </span>
                                             @endif
-                                        @elseif($status === 'realizado' || $status === 'concluido')
+                                        @elseif($status === 'realizado' || $status === 'concluido' || $status === 'com_ressalvas')
                                             <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
-                                                Validado
+                                                {{ $status === 'com_ressalvas' ? 'Validado com ressalva' : 'Validado' }}
                                             </span>
                                         @elseif($status === 'devolvido')
                                             <x-filament::button
