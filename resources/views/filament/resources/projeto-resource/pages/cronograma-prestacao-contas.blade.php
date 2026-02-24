@@ -10,6 +10,13 @@
 
     <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-4 mb-6">
         <form method="get" class="flex flex-wrap items-center gap-3">
+            <label class="text-sm text-gray-600 dark:text-gray-400" for="year">Ano</label>
+            <select id="year" name="year" class="text-sm rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800" onchange="this.form.submit()">
+                @foreach($this->getAnos() as $ano)
+                    <option value="{{ $ano }}" @selected($ano == $this->year)>{{ $ano }}</option>
+                @endforeach
+            </select>
+
             <label class="text-sm text-gray-600 dark:text-gray-400" for="origem">Origem</label>
             <select id="origem" name="origem" class="text-sm rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800" onchange="this.form.submit()">
                 <option value="">Todas</option>
@@ -84,7 +91,14 @@
                         <tbody>
                             @forelse($resumo['internas']['qualitativas']->merge($resumo['internas']['quantitativas'])->sortBy('data_limite') as $etapa)
                                 <tr class="border-b dark:border-gray-700">
-                                    <td class="py-2 px-3 text-gray-900 dark:text-white">{{ $etapa->descricao ?? '-' }}</td>
+                                    <td class="py-2 px-3 text-gray-900 dark:text-white">
+                                        <div class="whitespace-normal break-words">
+                                            {{ $etapa->descricao ?? '-' }}
+                                        </div>
+                                        <div class="mt-1 text-xs text-gray-600 dark:text-gray-400 whitespace-normal break-words">
+                                            <strong>Observações:</strong> {{ $etapa->observacoes ?? '-' }}
+                                        </div>
+                                    </td>
                                     <td class="py-2 px-3">
                                         <span class="px-2 py-1 rounded text-xs {{ $etapa->tipo === 'qualitativa' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300' }}">
                                             {{ $etapa->tipo_label }}
@@ -139,7 +153,14 @@
                             <tbody>
                                 @forelse($dados['qualitativas']->merge($dados['quantitativas'])->sortBy('data_limite') as $etapa)
                                     <tr class="border-b dark:border-gray-700">
-                                        <td class="py-2 px-3 text-gray-900 dark:text-white">{{ $etapa->descricao ?? '-' }}</td>
+                                        <td class="py-2 px-3 text-gray-900 dark:text-white">
+                                            <div class="whitespace-normal break-words">
+                                                {{ $etapa->descricao ?? '-' }}
+                                            </div>
+                                            <div class="mt-1 text-xs text-gray-600 dark:text-gray-400 whitespace-normal break-words">
+                                                <strong>Observações:</strong> {{ $etapa->observacoes ?? '-' }}
+                                            </div>
+                                        </td>
                                         <td class="py-2 px-3">
                                             <span class="px-2 py-1 rounded text-xs {{ $etapa->tipo === 'qualitativa' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300' }}">
                                                 {{ $etapa->tipo_label }}
@@ -209,7 +230,14 @@
                                         <td class="py-2 px-3 text-gray-700 dark:text-gray-300">
                                             {{ $etapa->projetoFinanciador?->financiador?->nome ?? '-' }}
                                         </td>
-                                        <td class="py-2 px-3 text-gray-900 dark:text-white">{{ $etapa->descricao ?? '-' }}</td>
+                                        <td class="py-2 px-3 text-gray-900 dark:text-white">
+                                            <div class="whitespace-normal break-words">
+                                                {{ $etapa->descricao ?? '-' }}
+                                            </div>
+                                            <div class="mt-1 text-xs text-gray-600 dark:text-gray-400 whitespace-normal break-words">
+                                                <strong>Observações:</strong> {{ $etapa->observacoes ?? '-' }}
+                                            </div>
+                                        </td>
                                         <td class="py-2 px-3">
                                             <span class="px-2 py-1 rounded text-xs {{ $etapa->tipo === 'qualitativa' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300' }}">
                                                 {{ $etapa->tipo_label }}

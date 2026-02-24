@@ -61,10 +61,14 @@ class CronogramaPrestacaoContas extends Page implements HasActions
     public ?string $month = null;
     public ?string $origem = null;
     public ?int $financiadorId = null;
+    public ?int $year = null;
 
     public function mount(int | string $record): void
     {
         $this->record = $this->resolveRecord($record);
+        $requestedYear = request()->query('year');
+        $year = $requestedYear !== null ? (int) $requestedYear : now()->year;
+        $this->year = $this->clampYearToRange($year);
         $this->month = request()->query('month');
         $this->origem = request()->query('origem');
         $this->financiadorId = request()->query('financiador_id') ? (int) request()->query('financiador_id') : null;
@@ -74,6 +78,43 @@ class CronogramaPrestacaoContas extends Page implements HasActions
             'etapasPrestacao.realizacoes',
             'contratos.financiador',
         ]);
+    }
+
+    private function clampYearToRange(int $year): int
+    {
+        $anos = $this->getAnos();
+        if (empty($anos)) {
+            return $year;
+        }
+
+        $min = min($anos);
+        $max = max($anos);
+
+        if ($year < $min) {
+            return $min;
+        }
+        if ($year > $max) {
+            return $max;
+        }
+
+        return $year;
+    }
+
+    public function getAnos(): array
+    {
+        $anos = $this->record->etapasPrestacao
+            ->filter(fn ($etapa) => $etapa->data_limite)
+            ->map(fn ($etapa) => $etapa->data_limite->year)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        if (empty($anos)) {
+            return [now()->year];
+        }
+
+        return $anos;
     }
 
     private function getEtapasFiltradas()
@@ -90,6 +131,12 @@ class CronogramaPrestacaoContas extends Page implements HasActions
                 if ($finId !== $this->financiadorId) {
                     return false;
                 }
+            }
+            if (!$this->month && $this->year) {
+                if ($etapa->data_limite) {
+                    return $etapa->data_limite->year === $this->year;
+                }
+                return true;
             }
             if ($this->month) {
                 if (!$etapa->data_limite) {
@@ -174,6 +221,9 @@ class CronogramaPrestacaoContas extends Page implements HasActions
         return $this->record->etapasPrestacao
             ->filter(fn ($etapa) => $etapa->data_limite)
             ->sortBy('data_limite')
+            ->when($this->year, function ($collection) {
+                return $collection->filter(fn ($etapa) => $etapa->data_limite->year === $this->year);
+            })
             ->mapWithKeys(fn ($etapa) => [
                 $etapa->data_limite->format('Y-m') => $etapa->data_limite->translatedFormat('F Y'),
             ])

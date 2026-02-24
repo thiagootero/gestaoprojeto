@@ -53,7 +53,9 @@ class CronogramaOperacional extends Page implements HasActions
     public function mount(int | string $record): void
     {
         $this->record = $this->resolveRecord($record);
-        $this->year = (int) request()->query('year', $this->record->data_inicio?->year ?? now()->year);
+        $requestedYear = request()->query('year');
+        $year = $requestedYear !== null ? (int) $requestedYear : now()->year;
+        $this->year = $this->clampYearToRange($year);
         $this->month = request()->query('month');
         $this->metaId = request()->query('meta_id') ? (int) request()->query('meta_id') : null;
         $this->record->load([
@@ -64,6 +66,26 @@ class CronogramaOperacional extends Page implements HasActions
             'metas.tarefas.realizacoes',
             'metas.tarefas.validadoPorUser',
         ]);
+    }
+
+    private function clampYearToRange(int $year): int
+    {
+        $anos = $this->getAnos();
+        if (empty($anos)) {
+            return $year;
+        }
+
+        $min = min($anos);
+        $max = max($anos);
+
+        if ($year < $min) {
+            return $min;
+        }
+        if ($year > $max) {
+            return $max;
+        }
+
+        return $year;
     }
 
     public function getAnos(): array
@@ -341,6 +363,7 @@ class CronogramaOperacional extends Page implements HasActions
                         'id' => $tarefa->id,
                         'meta' => $meta->descricao,
                         'descricao' => $tarefa->descricao,
+                        'como_fazer' => $tarefa->como_fazer ?? '-',
                         'prazo' => null,
                         'responsavel' => $responsavelTexto ?: '-',
                         'polo' => $tarefa->polo?->nome ?? 'Geral',
@@ -365,6 +388,7 @@ class CronogramaOperacional extends Page implements HasActions
                             'id' => $tarefa->id,
                             'meta' => $meta->descricao,
                             'descricao' => $tarefa->descricao,
+                            'como_fazer' => $tarefa->como_fazer ?? '-',
                             'prazo' => $prazoPorMes[$key] ?? null,
                             'responsavel' => $responsavelTexto ?: '-',
                             'polo' => $tarefa->polo?->nome ?? 'Geral',

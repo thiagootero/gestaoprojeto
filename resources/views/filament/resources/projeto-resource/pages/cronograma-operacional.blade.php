@@ -93,6 +93,9 @@
                                         <div class="whitespace-normal break-words overflow-hidden">
                                             {{ $tarefa['descricao'] }}
                                         </div>
+                                        <div class="mt-1 text-xs text-gray-600 dark:text-gray-400 whitespace-normal break-words">
+                                            <strong>Como fazer:</strong> {{ $tarefa['como_fazer'] ?? '-' }}
+                                        </div>
                                     </td>
                                     @foreach($meses as $mes)
                                         @php $val = $tarefa['marcacoes'][$mes['key']] ?? '' @endphp
@@ -155,6 +158,9 @@
                                 </div>
                                 <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                                     Meta: {{ $tarefa['meta'] }}
+                                </div>
+                                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                    <strong>Como fazer:</strong> {{ $tarefa['como_fazer'] ?? '-' }}
                                 </div>
                                 <div class="mt-3 flex flex-wrap gap-6 text-sm text-gray-700 dark:text-gray-300">
                                     <div>
