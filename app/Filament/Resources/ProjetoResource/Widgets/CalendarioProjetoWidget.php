@@ -118,9 +118,15 @@ class CalendarioProjetoWidget extends FullCalendarWidget
 
         // Etapas de Prestação de Contas (oculto para Diretor de Operações e Coordenador de Polo)
         if ($user && !$user->isDiretorOperacoes() && !$user->isCoordenadorPolo()) {
-        $etapas = EtapaPrestacao::query()
+        $etapasQuery = EtapaPrestacao::query()
             ->where('projeto_id', $this->record->getKey())
-            ->whereBetween('data_limite', [$start, $end])
+            ->whereBetween('data_limite', [$start, $end]);
+
+        if ($user->isCoordenadorFinanceiro()) {
+            $etapasQuery->where('tipo', 'financeira');
+        }
+
+        $etapas = $etapasQuery
             ->with('projetoFinanciador.financiador')
             ->get();
 

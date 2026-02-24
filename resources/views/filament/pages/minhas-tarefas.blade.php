@@ -1,28 +1,4 @@
 <x-filament-panels::page>
-    @php
-        $resumo = $this->getResumo();
-    @endphp
-
-    {{-- Cards de resumo --}}
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-4">
-            <div class="text-sm text-gray-500 dark:text-gray-400">Total</div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ $resumo['total'] }}</div>
-        </div>
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-4">
-            <div class="text-sm text-gray-500 dark:text-gray-400">Pendentes</div>
-            <div class="text-2xl font-bold text-red-600 dark:text-red-400">{{ $resumo['pendentes'] }}</div>
-        </div>
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-4">
-            <div class="text-sm text-gray-500 dark:text-gray-400">Em Análise</div>
-            <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{{ $resumo['em_analise'] }}</div>
-        </div>
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-4">
-            <div class="text-sm text-gray-500 dark:text-gray-400">Realizadas</div>
-            <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ $resumo['realizadas'] }}</div>
-        </div>
-    </div>
-
     {{-- Filtros --}}
     <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-4 mb-6">
         <form method="get" class="flex flex-wrap items-center gap-3">
@@ -98,13 +74,26 @@
                             <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                                 Projeto:
                                 <a
-                                    href="{{ \App\Filament\Resources\ProjetoResource::getUrl('cronograma-operacional', ['record' => $tarefa['projeto_id']]) }}"
+                                    href="{{ $tarefa['cronograma_url'] ?? \App\Filament\Resources\ProjetoResource::getUrl('cronograma-operacional', ['record' => $tarefa['projeto_id']]) }}"
                                     class="text-primary-600 dark:text-primary-400 hover:underline font-medium"
                                 >
                                     {{ $tarefa['projeto_nome'] }}
                                 </a>
-                                &middot; Meta: {{ $tarefa['meta'] }}
+                                @if(($tarefa['tipo_item'] ?? 'tarefa') === 'prestacao')
+                                    &middot; Prestação: {{ $tarefa['tipo_label'] ?? '-' }}
+                                @else
+                                    &middot; Meta: {{ $tarefa['meta'] }}
+                                @endif
                             </div>
+                            @if(($tarefa['tipo_item'] ?? 'tarefa') === 'prestacao')
+                                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                    <strong>Observações:</strong> {{ $tarefa['observacoes'] ?? '-' }}
+                                </div>
+                            @else
+                                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                    <strong>Como fazer:</strong> {{ $tarefa['como_fazer'] ?? '-' }}
+                                </div>
+                            @endif
                             <div class="mt-3 flex flex-wrap gap-6 text-sm text-gray-700 dark:text-gray-300">
                                 <div>
                                     <span class="text-gray-500 dark:text-gray-400">Prazo:</span>
@@ -124,6 +113,16 @@
                                         $status = $tarefa['status'] ?? '';
                                     @endphp
 
+                                    @if(($tarefa['tipo_item'] ?? 'tarefa') === 'prestacao')
+                                        <x-filament::button
+                                            size="sm"
+                                            color="primary"
+                                            tag="a"
+                                            href="{{ $tarefa['cronograma_url'] ?? \App\Filament\Resources\ProjetoResource::getUrl('cronograma-prestacao', ['record' => $tarefa['projeto_id']]) }}"
+                                        >
+                                            Abrir
+                                        </x-filament::button>
+                                    @else
                                         @if($status === 'em_analise')
                                             @if($podeValidar)
                                                 <x-filament::button
@@ -163,8 +162,9 @@
                                                 </x-filament::button>
                                             @endif
                                     @endif
+                                    @endif
 
-                                    @if($tarefa['tem_historico'] ?? false)
+                                    @if(($tarefa['tipo_item'] ?? 'tarefa') === 'tarefa' && ($tarefa['tem_historico'] ?? false))
                                         <x-filament::button
                                             size="sm"
                                             color="gray"

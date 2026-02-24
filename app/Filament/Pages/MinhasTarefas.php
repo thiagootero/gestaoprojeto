@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Models\Polo;
 use App\Models\Projeto;
+use App\Models\EtapaPrestacao;
 use App\Models\Tarefa;
 use App\Models\TarefaRealizacao;
 use App\Notifications\TarefaAprovada;
@@ -54,7 +55,12 @@ class MinhasTarefas extends Page implements HasActions
             return null;
         }
 
-        if ($user->isCoordenadorPolo() || $user->isDiretorOperacoes()) {
+        if ($user->isDiretorOperacoes()) {
+            $poloIds = $user->polos->pluck('id');
+            return $poloIds->unique()->values()->all();
+        }
+
+        if ($user->isCoordenadorPolo()) {
             $poloIds = $user->polos->pluck('id');
             $geralIds = Polo::where('is_geral', true)->pluck('id');
             return $poloIds->merge($geralIds)->unique()->values()->all();
@@ -65,6 +71,11 @@ class MinhasTarefas extends Page implements HasActions
 
     public function getTarefasMensal(): array
     {
+        $modo = $this->getModo();
+        if ($modo !== 'operacional') {
+            return $this->getPrestacoesMensal($modo);
+        }
+
         $query = Tarefa::query()
             ->with([
                 'meta.projeto',
@@ -129,12 +140,14 @@ class MinhasTarefas extends Page implements HasActions
                 : ($tarefa->responsavel ?? '-');
 
             $temHistorico = $tarefa->realizacoes->count() > 0 || $tarefa->observacoes || $tarefa->validadoPorUser;
+            $cronogramaUrl = \App\Filament\Resources\ProjetoResource::getUrl('cronograma-operacional', ['record' => $projeto->id]);
 
             if (empty($mesesTarefa)) {
                 $semData[] = [
                     'id' => $tarefa->id,
                     'meta' => $meta->descricao,
                     'descricao' => $tarefa->descricao,
+                    'como_fazer' => $tarefa->como_fazer ?? '-',
                     'prazo' => null,
                     'responsavel' => $responsavelTexto ?: '-',
                     'polo' => $tarefa->polo?->nome ?? 'Geral',
@@ -146,6 +159,8 @@ class MinhasTarefas extends Page implements HasActions
                     'ocorrencia_id' => null,
                     'projeto_nome' => $projeto->nome,
                     'projeto_id' => $projeto->id,
+                    'tipo_item' => 'tarefa',
+                    'cronograma_url' => $cronogramaUrl,
                 ];
                 continue;
             }
@@ -161,6 +176,7 @@ class MinhasTarefas extends Page implements HasActions
                     'id' => $tarefa->id,
                     'meta' => $meta->descricao,
                     'descricao' => $tarefa->descricao,
+                    'como_fazer' => $tarefa->como_fazer ?? '-',
                     'prazo' => $prazoPorMes[$key] ?? null,
                     'responsavel' => $responsavelTexto ?: '-',
                     'polo' => $tarefa->polo?->nome ?? 'Geral',
@@ -172,6 +188,8 @@ class MinhasTarefas extends Page implements HasActions
                     'ocorrencia_id' => $ocorrencia?->id,
                     'projeto_nome' => $projeto->nome,
                     'projeto_id' => $projeto->id,
+                    'tipo_item' => 'tarefa',
+                    'cronograma_url' => $cronogramaUrl,
                 ];
             }
         }
@@ -226,6 +244,134 @@ class MinhasTarefas extends Page implements HasActions
         return $resultado;
     }
 
+    private function getPrestacoesMensal(string $modo): array
+    {
+        $tipo = $modo === 'prestacao_financeira' ? 'financeira' : 'qualitativa';
+
+        $query = EtapaPrestacao::query()
+            ->with([
+                'projeto',
+                'projetoFinanciador.financiador',
+                'realizacoes',
+                'validadoPorUser',
+            ])
+            ->where('tipo', $tipo);
+
+        if ($this->projetoFilter) {
+            $query->where('projeto_id', $this->projetoFilter);
+        }
+
+        $etapas = $query->get();
+
+        $buckets = [];
+        $semData = [];
+
+        foreach ($etapas as $etapa) {
+            $projeto = $etapa->projeto;
+            if (!$projeto) {
+                continue;
+            }
+
+            $dataLimite = $etapa->data_limite;
+            $key = $dataLimite?->format('Y-m');
+            $temHistorico = $etapa->realizacoes->count() > 0 || $etapa->observacoes || $etapa->validadoPorUser;
+            $cronogramaUrl = \App\Filament\Resources\ProjetoResource::getUrl('cronograma-prestacao', ['record' => $projeto->id]);
+
+            $item = [
+                'id' => $etapa->id,
+                'meta' => null,
+                'descricao' => $etapa->descricao,
+                'observacoes' => $etapa->observacoes,
+                'prazo' => $dataLimite,
+                'responsavel' => '-',
+                'polo' => '-',
+                'status' => $etapa->status,
+                'status_label' => $etapa->status_label,
+                'status_color' => $etapa->status_color,
+                'status_normalizado' => $etapa->getStatusNormalizado(),
+                'tem_historico' => $temHistorico,
+                'ocorrencia_id' => null,
+                'projeto_nome' => $projeto->nome,
+                'projeto_id' => $projeto->id,
+                'tipo_item' => 'prestacao',
+                'tipo_label' => $etapa->tipo_label,
+                'cronograma_url' => $cronogramaUrl,
+            ];
+
+            if (!$key) {
+                $semData[] = $item;
+                continue;
+            }
+
+            $buckets[$key][] = $item;
+        }
+
+        // Filter by year
+        if ($this->year) {
+            $prefix = (string) $this->year;
+            $buckets = array_filter($buckets, fn ($_, $key) => str_starts_with($key, $prefix), ARRAY_FILTER_USE_BOTH);
+            $semData = $this->year == now()->year ? $semData : [];
+        }
+
+        // Filter by month
+        if ($this->month) {
+            $buckets = array_filter($buckets, fn ($_, $key) => $key === $this->month, ARRAY_FILTER_USE_BOTH);
+            $semData = [];
+        }
+
+        // Filter by status
+        if ($this->statusFilter) {
+            $statusFilter = $this->statusFilter;
+            $buckets = array_map(function ($items) use ($statusFilter) {
+                return array_values(array_filter($items, fn ($t) => ($t['status_normalizado'] ?? '') === $statusFilter));
+            }, $buckets);
+            $buckets = array_filter($buckets, fn ($items) => !empty($items));
+            $semData = array_values(array_filter($semData, fn ($t) => ($t['status_normalizado'] ?? '') === $statusFilter));
+        }
+
+        ksort($buckets);
+
+        $resultado = collect($buckets)
+            ->map(function ($items, $key) {
+                $label = Carbon::createFromFormat('Y-m', $key)
+                    ->locale('pt_BR')
+                    ->translatedFormat('F Y');
+
+                return [
+                    'label' => $label,
+                    'items' => collect($items)->sortBy('prazo')->values(),
+                ];
+            })
+            ->values()
+            ->all();
+
+        if (!$this->month && !empty($semData)) {
+            $resultado[] = [
+                'label' => 'Sem data',
+                'items' => collect($semData),
+            ];
+        }
+
+        return $resultado;
+    }
+
+    private function getModo(): string
+    {
+        $user = auth()->user();
+        if (!$user) {
+            return 'operacional';
+        }
+
+        if ($user->isCoordenadorFinanceiro()) {
+            return 'prestacao_financeira';
+        }
+        if ($user->isDiretorProjetos()) {
+            return 'prestacao_qualitativa';
+        }
+
+        return 'operacional';
+    }
+
     public function getAnosOptions(): array
     {
         $currentYear = now()->year;
@@ -258,6 +404,10 @@ class MinhasTarefas extends Page implements HasActions
                 $q->whereIn('polos.id', $poloIds)
                     ->orWhere('polos.is_geral', true);
             });
+        }
+        if ($user && ($user->isCoordenadorFinanceiro() || $user->isDiretorProjetos())) {
+            $tipo = $user->isCoordenadorFinanceiro() ? 'financeira' : 'qualitativa';
+            $query->whereHas('etapasPrestacao', fn ($q) => $q->where('tipo', $tipo));
         }
 
         return $query->pluck('nome', 'id')->toArray();

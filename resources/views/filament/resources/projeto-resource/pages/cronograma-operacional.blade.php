@@ -179,6 +179,11 @@
                                             $podeValidar = $currentUser?->isAdminGeral() || $currentUser?->isDiretorProjetos();
                                             $podeEnviar = $currentUser?->isSuperAdmin() || $currentUser?->isCoordenadorPolo() || $currentUser?->isDiretorOperacoes();
                                             $status = $tarefa['status'] ?? '';
+
+                                            if ($currentUser?->isDiretorOperacoes()) {
+                                                $poloIdsDiretor = $currentUser->polos->pluck('id')->all();
+                                                $podeEnviar = in_array($tarefa['polo_id'] ?? null, $poloIdsDiretor, true);
+                                            }
                                         @endphp
 
                                             @if($status === 'em_analise')

@@ -119,7 +119,12 @@ class CronogramaPrestacaoContas extends Page implements HasActions
 
     private function getEtapasFiltradas()
     {
-        return $this->record->etapasPrestacao->filter(function ($etapa) {
+        $user = auth()->user();
+
+        return $this->record->etapasPrestacao->filter(function ($etapa) use ($user) {
+            if ($user?->isCoordenadorFinanceiro() && $etapa->tipo !== 'financeira') {
+                return false;
+            }
             if ($this->origem === 'interna' && $etapa->origem !== 'interna') {
                 return false;
             }
@@ -303,6 +308,14 @@ class CronogramaPrestacaoContas extends Page implements HasActions
                     Notification::make()
                         ->title('Sem permissão')
                         ->body('Coordenador de polo só pode enviar prestações qualitativas.')
+                        ->danger()
+                        ->send();
+                    return;
+                }
+                if ($user->isDiretorProjetos() && $etapa->tipo === 'financeira') {
+                    Notification::make()
+                        ->title('Sem permissão')
+                        ->body('Diretor de projetos não pode enviar prestações financeiras.')
                         ->danger()
                         ->send();
                     return;

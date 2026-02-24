@@ -272,6 +272,9 @@
                                                 if ($currentUser?->isCoordenadorPolo() && $etapa->tipo !== 'qualitativa') {
                                                     $podeEnviar = false;
                                                 }
+                                                if ($currentUser?->isDiretorProjetos() && $etapa->tipo === 'financeira') {
+                                                    $podeEnviar = false;
+                                                }
                                             @endphp
                                             <div class="flex items-center gap-1">
                                                 @if($etapa->status === 'em_analise')

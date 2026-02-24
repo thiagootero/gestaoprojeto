@@ -174,7 +174,11 @@ class CronogramaOperacional extends Page implements HasActions
             return null;
         }
 
-        if ($user->isCoordenadorPolo() || $user->isDiretorOperacoes()) {
+        if ($user->isDiretorOperacoes()) {
+            return null;
+        }
+
+        if ($user->isCoordenadorPolo()) {
             $poloIds = $user->polos->pluck('id');
             $geralIds = \App\Models\Polo::where('is_geral', true)->pluck('id');
             return $poloIds->merge($geralIds)->unique()->values()->all();
@@ -367,6 +371,7 @@ class CronogramaOperacional extends Page implements HasActions
                         'prazo' => null,
                         'responsavel' => $responsavelTexto ?: '-',
                         'polo' => $tarefa->polo?->nome ?? 'Geral',
+                        'polo_id' => $tarefa->polo_id,
                         'status' => $tarefa->status,
                         'status_label' => $tarefa->status_label,
                         'status_color' => $tarefa->status_color,
@@ -392,6 +397,7 @@ class CronogramaOperacional extends Page implements HasActions
                             'prazo' => $prazoPorMes[$key] ?? null,
                             'responsavel' => $responsavelTexto ?: '-',
                             'polo' => $tarefa->polo?->nome ?? 'Geral',
+                            'polo_id' => $tarefa->polo_id,
                             'status' => $status,
                             'status_label' => $statusLabel,
                             'status_color' => $statusColor,
