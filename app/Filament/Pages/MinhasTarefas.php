@@ -39,6 +39,7 @@ class MinhasTarefas extends Page implements HasActions
     public ?string $month = null;
     public ?string $statusFilter = null;
     public ?int $projetoFilter = null;
+    public ?int $poloFilter = null;
 
     public function mount(): void
     {
@@ -46,6 +47,7 @@ class MinhasTarefas extends Page implements HasActions
         $this->month = request()->query('month');
         $this->statusFilter = request()->query('status');
         $this->projetoFilter = request()->query('projeto_id') ? (int) request()->query('projeto_id') : null;
+        $this->poloFilter = request()->query('polo_id') ? (int) request()->query('polo_id') : null;
     }
 
     private function getPoloIdsPermitidos(): ?array
@@ -93,6 +95,9 @@ class MinhasTarefas extends Page implements HasActions
 
         if ($this->projetoFilter) {
             $query->whereHas('meta', fn ($q) => $q->where('projeto_id', $this->projetoFilter));
+        }
+        if ($this->poloFilter) {
+            $query->where('polo_id', $this->poloFilter);
         }
 
         $tarefas = $query->get();
@@ -262,6 +267,10 @@ class MinhasTarefas extends Page implements HasActions
         if ($this->projetoFilter) {
             $query->where('projeto_id', $this->projetoFilter);
         }
+        if ($this->poloFilter) {
+            $poloId = $this->poloFilter;
+            $query->whereHas('projeto.polos', fn ($q) => $q->where('polos.id', $poloId));
+        }
 
         $etapas = $query->get();
 
@@ -425,6 +434,27 @@ class MinhasTarefas extends Page implements HasActions
             'realizado' => 'Realizado',
             'com_ressalvas' => 'Com Ressalvas',
         ];
+    }
+
+    public function getPolosOptions(): array
+    {
+        $query = Polo::query()
+            ->where('ativo', true)
+            ->orderBy('nome');
+
+        $user = auth()->user();
+        if ($user && $user->isCoordenadorPolo()) {
+            $poloIds = $user->polos->pluck('id');
+            $geralIds = Polo::where('is_geral', true)->pluck('id');
+            $query->whereIn('id', $poloIds->merge($geralIds)->unique()->values()->all());
+        }
+
+        if ($this->projetoFilter) {
+            $projetoId = $this->projetoFilter;
+            $query->whereHas('projetos', fn ($q) => $q->where('projetos.id', $projetoId));
+        }
+
+        return $query->pluck('nome', 'id')->toArray();
     }
 
     public function getResumo(): array

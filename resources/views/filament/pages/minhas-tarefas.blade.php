@@ -37,6 +37,14 @@
                     <option value="{{ $id }}" @selected((string) $id === (string) $this->projetoFilter)>{{ $nome }}</option>
                 @endforeach
             </select>
+
+            <label class="text-sm text-gray-600 dark:text-gray-400" for="polo_id">Polo</label>
+            <select id="polo_id" name="polo_id" class="text-sm rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800" onchange="this.form.submit()">
+                <option value="">Todos</option>
+                @foreach($this->getPolosOptions() as $id => $nome)
+                    <option value="{{ $id }}" @selected((string) $id === (string) $this->poloFilter)>{{ $nome }}</option>
+                @endforeach
+            </select>
         </form>
     </div>
 
