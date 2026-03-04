@@ -151,6 +151,7 @@ class MinhasTarefas extends Page implements HasActions
                     'prazo' => null,
                     'responsavel' => $responsavelTexto ?: '-',
                     'polo' => $tarefa->polo?->nome ?? 'Geral',
+                    'polo_id' => $tarefa->polo_id,
                     'status' => $tarefa->status,
                     'status_label' => $tarefa->status_label,
                     'status_color' => $tarefa->status_color,
@@ -180,6 +181,7 @@ class MinhasTarefas extends Page implements HasActions
                     'prazo' => $prazoPorMes[$key] ?? null,
                     'responsavel' => $responsavelTexto ?: '-',
                     'polo' => $tarefa->polo?->nome ?? 'Geral',
+                    'polo_id' => $tarefa->polo_id,
                     'status' => $status,
                     'status_label' => $statusLabel,
                     'status_color' => $statusColor,
@@ -355,7 +357,7 @@ class MinhasTarefas extends Page implements HasActions
         return $resultado;
     }
 
-    private function getModo(): string
+    protected function getModo(): string
     {
         $user = auth()->user();
         if (!$user) {
@@ -453,6 +455,16 @@ class MinhasTarefas extends Page implements HasActions
             'em_analise' => $emAnalise,
             'realizadas' => $realizadas,
         ];
+    }
+
+    public function getItemLabelSingular(): string
+    {
+        return 'tarefa';
+    }
+
+    public function getItemLabelPlural(): string
+    {
+        return 'tarefas';
     }
 
     public function realizarTarefaAction(): Action

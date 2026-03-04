@@ -3,21 +3,21 @@
 namespace App\Notifications;
 
 use App\Models\Tarefa;
-use App\Models\User;
+use App\Models\TarefaOcorrencia;
 use Filament\Notifications\Actions\Action;
 use Filament\Notifications\Notification as FilamentNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class TarefaDevolvida extends Notification
+class TarefaPrazoProximo extends Notification
 {
     use Queueable;
 
     public function __construct(
         public Tarefa $tarefa,
-        public User $devolvidoPor,
-        public string $motivo,
+        public int $diasRestantes,
+        public ?TarefaOcorrencia $ocorrencia = null,
     ) {
         $this->tarefa->loadMissing('meta.projeto');
     }
@@ -29,17 +29,13 @@ class TarefaDevolvida extends Notification
 
     public function toDatabase(object $notifiable): array
     {
-        $body = "{$this->tarefa->descricao} | {$this->getProjetoNome()} | Devolvido por {$this->devolvidoPor->name}";
-
-        if ($this->motivo !== '') {
-            $body .= " | Motivo: {$this->motivo}";
-        }
+        $body = "{$this->tarefa->descricao} | {$this->getProjetoNome()} | Prazo: {$this->getPrazoLabel()}";
 
         return FilamentNotification::make()
-            ->title('Tarefa devolvida para ajuste')
+            ->title($this->getTitulo())
             ->body($body)
-            ->icon('heroicon-o-arrow-uturn-left')
-            ->danger()
+            ->icon('heroicon-o-bell-alert')
+            ->warning()
             ->actions([
                 Action::make('ver')
                     ->label('Ver')
@@ -51,22 +47,35 @@ class TarefaDevolvida extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $projeto = $this->getProjetoNome();
-
-        $message = (new MailMessage)
-            ->subject("[SGP] Tarefa devolvida - {$projeto}")
+        return (new MailMessage)
+            ->subject("[SGP] {$this->getTitulo()} - {$this->getProjetoNome()}")
             ->greeting("Olá, {$notifiable->name}!")
-            ->line("A tarefa \"{$this->tarefa->descricao}\" foi devolvida para ajuste.")
-            ->line("Devolvido por: {$this->devolvidoPor->name}")
-            ->line("Projeto: {$projeto}");
+            ->line("A tarefa \"{$this->tarefa->descricao}\" está próxima do vencimento.")
+            ->line("Projeto: {$this->getProjetoNome()}")
+            ->line("Prazo: {$this->getPrazoLabel()}")
+            ->line($this->getMensagemDias())
+            ->action('Ver no sistema', $this->getUrl());
+    }
 
-        if ($this->motivo !== '') {
-            $message->line("Motivo: {$this->motivo}");
-        }
+    private function getTitulo(): string
+    {
+        return $this->diasRestantes === 1
+            ? 'Lembrete: tarefa vence amanhã'
+            : "Lembrete: tarefa vence em {$this->diasRestantes} dias";
+    }
 
-        return $message
-            ->action('Ver no sistema', $this->getUrl())
-            ->line('Acesse o sistema para corrigir e reenviar.');
+    private function getMensagemDias(): string
+    {
+        return $this->diasRestantes === 1
+            ? 'Falta 1 dia para o vencimento.'
+            : "Faltam {$this->diasRestantes} dias para o vencimento.";
+    }
+
+    private function getPrazoLabel(): string
+    {
+        $data = $this->ocorrencia?->data_fim ?? $this->tarefa->data_fim;
+
+        return $data?->format('d/m/Y') ?? '-';
     }
 
     private function getProjetoNome(): string

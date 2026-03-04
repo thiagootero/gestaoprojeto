@@ -1,4 +1,9 @@
 <x-filament-panels::page>
+    @php
+        $itemLabelSingular = method_exists($this, 'getItemLabelSingular') ? $this->getItemLabelSingular() : 'tarefa';
+        $itemLabelPlural = method_exists($this, 'getItemLabelPlural') ? $this->getItemLabelPlural() : 'tarefas';
+    @endphp
+
     {{-- Filtros --}}
     <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-4 mb-6">
         <form method="get" class="flex flex-wrap items-center gap-3">
@@ -46,7 +51,7 @@
                 <div class="flex items-center justify-between mb-4">
                     <div class="font-semibold text-gray-900 dark:text-white">{{ $mes['label'] }}</div>
                     <div class="text-sm text-gray-600 dark:text-gray-400">
-                        {{ $mes['items']->count() }} tarefas
+                        {{ $mes['items']->count() }} {{ $itemLabelPlural }}
                     </div>
                 </div>
                 <div class="space-y-3">
@@ -178,14 +183,14 @@
                         </div>
                     @empty
                         <div class="py-6 text-center text-gray-500 dark:text-gray-400">
-                            Nenhuma tarefa para este mês.
+                            Nenhuma {{ $itemLabelSingular }} para este mês.
                         </div>
                     @endforelse
                 </div>
             </div>
         @empty
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-6 text-center text-gray-500 dark:text-gray-400">
-                Nenhuma tarefa encontrada para os filtros selecionados.
+                Nenhuma {{ $itemLabelSingular }} encontrada para os filtros selecionados.
             </div>
         @endforelse
     </div>

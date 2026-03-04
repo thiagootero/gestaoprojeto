@@ -7,11 +7,10 @@ use App\Models\User;
 use Filament\Notifications\Actions\Action;
 use Filament\Notifications\Notification as FilamentNotification;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class TarefaEnviadaParaAnalise extends Notification implements ShouldQueue
+class TarefaEnviadaParaAnalise extends Notification
 {
     use Queueable;
 
