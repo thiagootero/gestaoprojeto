@@ -129,7 +129,11 @@
                                             'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' => $prestacao['urgencia_color'] === 'warning',
                                             'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' => $prestacao['urgencia_color'] === 'danger',
                                         ])>
-                                            {{ $prestacao['dias_restantes'] < 0 ? abs($prestacao['dias_restantes']) . ' dias atrasado' : $prestacao['dias_restantes'] . ' dias' }}
+                                            {{
+                                                $prestacao['dias_restantes'] < 0
+                                                    ? ($prestacao['exibe_dias_atraso'] ? abs($prestacao['dias_restantes']) . ' dias atrasado' : '-')
+                                                    : $prestacao['dias_restantes'] . ' dias'
+                                            }}
                                         </span>
                                     </td>
                                     <td class="py-2 px-3">
@@ -199,7 +203,11 @@
                                                 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' => $prestacao['urgencia_color'] === 'warning',
                                                 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' => $prestacao['urgencia_color'] === 'danger',
                                         ])>
-                                                {{ $prestacao['dias_restantes'] < 0 ? abs($prestacao['dias_restantes']) . ' dias atrasado' : $prestacao['dias_restantes'] . ' dias' }}
+                                                {{
+                                                    $prestacao['dias_restantes'] < 0
+                                                        ? ($prestacao['exibe_dias_atraso'] ? abs($prestacao['dias_restantes']) . ' dias atrasado' : '-')
+                                                        : $prestacao['dias_restantes'] . ' dias'
+                                                }}
                                             </span>
                                         </td>
                                         <td class="py-2 px-3">

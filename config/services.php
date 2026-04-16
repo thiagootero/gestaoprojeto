@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'portal' => [
+        'base_url' => env('PORTAL_BASE_URL', 'http://localhost:8001'),
+        'client_key' => env('PORTAL_CLIENT_KEY', 'gestaoprojeto'),
+        'shared_secret' => env('PORTAL_SHARED_SECRET', 'gestaoprojeto-secret'),
+    ],
+
 ];

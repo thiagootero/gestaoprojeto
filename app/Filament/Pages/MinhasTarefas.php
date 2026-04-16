@@ -497,6 +497,25 @@ class MinhasTarefas extends Page implements HasActions
         return 'tarefas';
     }
 
+    public function canSendTaskItem(array $item): bool
+    {
+        $user = auth()->user();
+
+        return (bool) ($user && ($user->isSuperAdmin() || $user->isCoordenadorPolo() || $user->isDiretorOperacoes()));
+    }
+
+    public function canAnalyzeTaskItem(array $item): bool
+    {
+        $user = auth()->user();
+
+        return (bool) ($user && ($user->isAdminGeral() || $user->isDiretorProjetos()));
+    }
+
+    public function shouldShowOpenTaskButton(array $item): bool
+    {
+        return false;
+    }
+
     public function realizarTarefaAction(): Action
     {
         return Action::make('realizarTarefa')

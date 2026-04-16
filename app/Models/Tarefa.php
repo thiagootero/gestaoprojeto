@@ -119,7 +119,8 @@ class Tarefa extends Model
         if (!$this->data_fim) {
             return false;
         }
-        return $this->data_fim->isPast() && !in_array($this->status, ['realizado', 'concluido', 'com_ressalvas']);
+
+        return $this->data_fim->isPast() && !in_array($this->status, ['realizado', 'concluido', 'com_ressalvas', 'em_analise']);
     }
 
     public function getVencendoAttribute(): bool
@@ -128,7 +129,8 @@ class Tarefa extends Model
             return false;
         }
         $diasRestantes = now()->startOfDay()->diffInDays($this->data_fim, false);
-        return $diasRestantes >= 0 && $diasRestantes <= 7 && !in_array($this->status, ['realizado', 'concluido', 'com_ressalvas']);
+
+        return $diasRestantes >= 0 && $diasRestantes <= 7 && !in_array($this->status, ['realizado', 'concluido', 'com_ressalvas', 'em_analise']);
     }
 
     public function getStatusNormalizado(): string

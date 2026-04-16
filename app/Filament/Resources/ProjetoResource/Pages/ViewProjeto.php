@@ -61,8 +61,9 @@ class ViewProjeto extends ViewRecord
                     return $tarefa->ocorrencias->map(function ($ocorrencia) use ($tarefa, $responsavelTexto) {
                         $dataFim = $ocorrencia->data_fim;
                         $diasRestantes = now()->startOfDay()->diffInDays($dataFim, false);
-                        $atrasada = $dataFim->isPast() && !in_array($tarefa->status, ['realizado', 'concluido', 'com_ressalvas']);
-                        $vencendo = $diasRestantes >= 0 && $diasRestantes <= 7 && !in_array($tarefa->status, ['realizado', 'concluido', 'com_ressalvas']);
+                        $statusAtual = $ocorrencia->status;
+                        $atrasada = $dataFim->isPast() && !in_array($statusAtual, ['realizado', 'concluido', 'com_ressalvas', 'em_analise'], true);
+                        $vencendo = $diasRestantes >= 0 && $diasRestantes <= 7 && !in_array($statusAtual, ['realizado', 'concluido', 'com_ressalvas', 'em_analise'], true);
 
                         return [
                             'id' => $tarefa->id . '-' . $ocorrencia->id,
@@ -72,9 +73,9 @@ class ViewProjeto extends ViewRecord
                             'responsavel' => $responsavelTexto,
                             'data_inicio' => $tarefa->data_inicio?->format('d/m/Y'),
                             'data_fim' => $dataFim?->format('d/m/Y'),
-                            'status' => $tarefa->status,
-                            'status_label' => $tarefa->status_label,
-                            'status_color' => $tarefa->status_color,
+                            'status' => $statusAtual,
+                            'status_label' => $ocorrencia->status_label,
+                            'status_color' => $ocorrencia->status_color,
                             'atrasada' => $atrasada,
                             'vencendo' => $vencendo,
                         ];
@@ -131,6 +132,7 @@ class ViewProjeto extends ViewRecord
                 'status_label' => $etapa->status_label,
                 'status_color' => $etapa->status_color,
                 'dias_restantes' => $etapa->dias_restantes,
+                'exibe_dias_atraso' => $etapa->exibe_dias_atraso,
                 'urgencia_color' => $etapa->urgencia_color,
             ];
         })->sortBy('data_limite_raw');

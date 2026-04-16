@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
 
 class User extends Authenticatable implements FilamentUser
 {
@@ -18,6 +19,7 @@ class User extends Authenticatable implements FilamentUser
         'name',
         'email',
         'password',
+        'central_user_id',
         'perfil',
         'cargo',
         'ativo',
@@ -33,8 +35,18 @@ class User extends Authenticatable implements FilamentUser
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'central_user_id' => 'integer',
             'ativo' => 'boolean',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $user): void {
+            if (blank($user->password)) {
+                $user->password = Str::password(32);
+            }
+        });
     }
 
     public function canAccessPanel(Panel $panel): bool

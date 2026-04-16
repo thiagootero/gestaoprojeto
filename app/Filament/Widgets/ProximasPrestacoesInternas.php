@@ -61,15 +61,21 @@ class ProximasPrestacoesInternas extends BaseWidget
                     ->label('Dias')
                     ->alignCenter()
                     ->badge()
-                    ->formatStateUsing(function (int $state): string {
-                        if ($state < 0) {
+                    ->formatStateUsing(function (int $state, EtapaPrestacao $record): string {
+                        if ($state < 0 && $record->exibe_dias_atraso) {
                             return abs($state) . ' atrasado';
                         }
+
+                        if ($state < 0) {
+                            return '-';
+                        }
+
                         return $state . ' dias';
                     })
                     ->color(function (EtapaPrestacao $record): string {
                         $dias = $record->dias_restantes;
-                        if ($dias < 0) return 'danger';
+                        if ($dias < 0 && $record->exibe_dias_atraso) return 'danger';
+                        if ($dias < 0) return 'gray';
                         if ($dias <= 15) return 'danger';
                         if ($dias <= 30) return 'warning';
                         return 'success';

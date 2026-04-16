@@ -120,9 +120,9 @@
                                 </div>
                                 <div class="flex items-center gap-1">
                                     @php
-                                        $currentUser = auth()->user();
-                                        $podeValidar = $currentUser?->isAdminGeral() || $currentUser?->isDiretorProjetos();
-                                        $podeEnviar = $currentUser?->isSuperAdmin() || $currentUser?->isCoordenadorPolo() || $currentUser?->isDiretorOperacoes();
+                                        $podeValidar = method_exists($this, 'canAnalyzeTaskItem') ? $this->canAnalyzeTaskItem($tarefa) : false;
+                                        $podeEnviar = method_exists($this, 'canSendTaskItem') ? $this->canSendTaskItem($tarefa) : false;
+                                        $mostrarAbrirTarefa = method_exists($this, 'shouldShowOpenTaskButton') ? $this->shouldShowOpenTaskButton($tarefa) : false;
                                         $status = $tarefa['status'] ?? '';
                                     @endphp
 
@@ -136,7 +136,16 @@
                                             Abrir
                                         </x-filament::button>
                                     @else
-                                        @if($status === 'em_analise')
+                                        @if($mostrarAbrirTarefa)
+                                            <x-filament::button
+                                                size="sm"
+                                                color="primary"
+                                                tag="a"
+                                                href="{{ $tarefa['cronograma_url'] ?? \App\Filament\Resources\ProjetoResource::getUrl('cronograma-operacional', ['record' => $tarefa['projeto_id']]) }}"
+                                            >
+                                                Abrir
+                                            </x-filament::button>
+                                        @elseif($status === 'em_analise')
                                             @if($podeValidar)
                                                 <x-filament::button
                                                     size="sm"

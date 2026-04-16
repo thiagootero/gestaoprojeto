@@ -29,6 +29,8 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
             ->login()
             ->brandName('SGP - Sementes do Vale')
+            ->brandLogo(asset('sementesti.png'))
+            ->brandLogoHeight('3rem')
             ->colors([
                 'primary' => Color::Emerald,
                 'danger' => Color::Rose,

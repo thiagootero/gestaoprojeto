@@ -121,11 +121,16 @@ class EtapaPrestacao extends Model
         return now()->startOfDay()->diffInDays($this->data_limite, false);
     }
 
+    public function getExibeDiasAtrasoAttribute(): bool
+    {
+        return !in_array($this->status, ['enviada', 'em_analise', 'aprovada', 'realizado', 'com_ressalvas'], true);
+    }
+
     public function getUrgenciaColorAttribute(): string
     {
         $dias = $this->dias_restantes;
 
-        if ($dias < 0) {
+        if ($dias < 0 && $this->exibe_dias_atraso) {
             return 'danger'; // Atrasado
         }
         if ($dias <= 15) {
