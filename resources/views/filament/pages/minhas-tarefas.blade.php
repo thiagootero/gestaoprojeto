@@ -122,19 +122,68 @@
                                     @php
                                         $podeValidar = method_exists($this, 'canAnalyzeTaskItem') ? $this->canAnalyzeTaskItem($tarefa) : false;
                                         $podeEnviar = method_exists($this, 'canSendTaskItem') ? $this->canSendTaskItem($tarefa) : false;
+                                        $podeValidarPrestacao = method_exists($this, 'canAnalyzePrestacaoItem') ? $this->canAnalyzePrestacaoItem($tarefa) : false;
+                                        $podeEnviarPrestacao = method_exists($this, 'canSendPrestacaoItem') ? $this->canSendPrestacaoItem($tarefa) : false;
                                         $mostrarAbrirTarefa = method_exists($this, 'shouldShowOpenTaskButton') ? $this->shouldShowOpenTaskButton($tarefa) : false;
                                         $status = $tarefa['status'] ?? '';
                                     @endphp
 
                                     @if(($tarefa['tipo_item'] ?? 'tarefa') === 'prestacao')
-                                        <x-filament::button
-                                            size="sm"
-                                            color="primary"
-                                            tag="a"
-                                            href="{{ $tarefa['cronograma_url'] ?? \App\Filament\Resources\ProjetoResource::getUrl('cronograma-prestacao', ['record' => $tarefa['projeto_id']]) }}"
-                                        >
-                                            Abrir
-                                        </x-filament::button>
+                                        @if($status === 'em_analise')
+                                            @if($podeValidarPrestacao)
+                                                <x-filament::button
+                                                    size="sm"
+                                                    color="warning"
+                                                    wire:click="mountAction('analisarPrestacao', { etapa_id: {{ $tarefa['id'] }} })"
+                                                >
+                                                    Analisar
+                                                </x-filament::button>
+                                            @else
+                                                <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">
+                                                    Aguardando validação
+                                                </span>
+                                            @endif
+                                        @elseif($status === 'devolvido')
+                                            @if($podeEnviarPrestacao)
+                                                <x-filament::button
+                                                    size="sm"
+                                                    color="primary"
+                                                    wire:click="mountAction('realizarPrestacao', { etapa_id: {{ $tarefa['id'] }} })"
+                                                >
+                                                    Reenviar
+                                                </x-filament::button>
+                                            @else
+                                                <x-filament::button
+                                                    size="sm"
+                                                    color="primary"
+                                                    tag="a"
+                                                    href="{{ $tarefa['cronograma_url'] ?? \App\Filament\Resources\ProjetoResource::getUrl('cronograma-prestacao', ['record' => $tarefa['projeto_id']]) }}"
+                                                >
+                                                    Abrir
+                                                </x-filament::button>
+                                            @endif
+                                        @elseif(in_array($status, ['realizado', 'concluido', 'com_ressalvas'], true))
+                                            <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+                                                {{ $status === 'com_ressalvas' ? 'Validado com ressalva' : 'Validado' }}
+                                            </span>
+                                        @elseif($podeEnviarPrestacao)
+                                            <x-filament::button
+                                                size="sm"
+                                                color="primary"
+                                                wire:click="mountAction('realizarPrestacao', { etapa_id: {{ $tarefa['id'] }} })"
+                                            >
+                                                Enviar
+                                            </x-filament::button>
+                                        @else
+                                            <x-filament::button
+                                                size="sm"
+                                                color="primary"
+                                                tag="a"
+                                                href="{{ $tarefa['cronograma_url'] ?? \App\Filament\Resources\ProjetoResource::getUrl('cronograma-prestacao', ['record' => $tarefa['projeto_id']]) }}"
+                                            >
+                                                Abrir
+                                            </x-filament::button>
+                                        @endif
                                     @else
                                         @if($mostrarAbrirTarefa)
                                             <x-filament::button
@@ -191,6 +240,16 @@
                                             size="sm"
                                             color="gray"
                                             wire:click="mountAction('historicoTarefa', { tarefa_id: {{ $tarefa['id'] }}, tarefa_ocorrencia_id: {{ $tarefa['ocorrencia_id'] ?? 'null' }} })"
+                                        >
+                                            Histórico
+                                        </x-filament::button>
+                                    @endif
+
+                                    @if(($tarefa['tipo_item'] ?? 'tarefa') === 'prestacao' && ($tarefa['tem_historico'] ?? false))
+                                        <x-filament::button
+                                            size="sm"
+                                            color="gray"
+                                            wire:click="mountAction('historicoPrestacao', { etapa_id: {{ $tarefa['id'] }} })"
                                         >
                                             Histórico
                                         </x-filament::button>
