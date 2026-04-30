@@ -9,6 +9,7 @@ use App\Notifications\TarefaAprovada;
 use App\Notifications\TarefaDevolvida;
 use App\Notifications\TarefaEnviadaParaAnalise;
 use App\Support\NotificacaoCentral;
+use App\Support\TarefaHistoricoService;
 use Carbon\Carbon;
 use Filament\Actions\Action;
 use Filament\Actions\Concerns\InteractsWithActions;
@@ -480,6 +481,7 @@ class CronogramaOperacional extends Page implements HasActions
                 $ocorrenciaId = $data['tarefa_ocorrencia_id'] ?? null;
                 $ocorrencia = $ocorrenciaId ? $tarefa->ocorrencias()->find($ocorrenciaId) : null;
                 $user = auth()->user();
+                $statusAnterior = $ocorrencia?->status ?? $tarefa->status;
 
                 if (!$user || (!$user->isSuperAdmin() && !$user->isCoordenadorPolo() && !$user->isDiretorOperacoes())) {
                     Notification::make()
@@ -502,6 +504,15 @@ class CronogramaOperacional extends Page implements HasActions
                 } else {
                     $tarefa->update(['status' => 'em_analise']);
                 }
+
+                TarefaHistoricoService::registrarMovimentacao(
+                    $tarefa,
+                    $user,
+                    $statusAnterior,
+                    'em_analise',
+                    $data['comentario'],
+                    $ocorrencia,
+                );
 
                 Notification::make()
                     ->title('Tarefa enviada para análise')
@@ -578,6 +589,7 @@ class CronogramaOperacional extends Page implements HasActions
                 $ocorrenciaId = $data['tarefa_ocorrencia_id'] ?? null;
                 $ocorrencia = $ocorrenciaId ? $tarefa->ocorrencias()->find($ocorrenciaId) : null;
                 $user = auth()->user();
+                $statusAnterior = $ocorrencia?->status ?? $tarefa->status;
 
                 if (!$user->isAdminGeral() && !$user->isDiretorProjetos()) {
                     Notification::make()
@@ -610,6 +622,15 @@ class CronogramaOperacional extends Page implements HasActions
                     } else {
                         $tarefa->update($updateData);
                     }
+
+                    TarefaHistoricoService::registrarMovimentacao(
+                        $tarefa,
+                        $user,
+                        $statusAnterior,
+                        $status,
+                        $data['observacao'] ?? null,
+                        $ocorrencia,
+                    );
 
                     $notification = Notification::make()
                         ->title($data['decisao'] === 'aprovar_ressalva'
@@ -649,6 +670,15 @@ class CronogramaOperacional extends Page implements HasActions
                         ]);
                     }
 
+                    TarefaHistoricoService::registrarMovimentacao(
+                        $tarefa,
+                        $user,
+                        $statusAnterior,
+                        'devolvido',
+                        $data['motivo'],
+                        $ocorrencia,
+                    );
+
                     Notification::make()
                         ->title('Tarefa devolvida para ajuste')
                         ->warning()
@@ -677,97 +707,17 @@ class CronogramaOperacional extends Page implements HasActions
                 Forms\Components\Placeholder::make('historico_content')
                     ->label('')
                     ->content(function (Forms\Get $get) {
-                        $tarefa = Tarefa::with(['realizacoes.user', 'validadoPorUser', 'ocorrencias.validadoPorUser'])->find($get('tarefa_id'));
-                        if (!$tarefa) return new HtmlString('<p class="text-gray-500">Nenhum registro encontrado.</p>');
-
-                        $html = '<div class="space-y-4">';
+                        $tarefa = Tarefa::find($get('tarefa_id'));
+                        if (!$tarefa) {
+                            return new HtmlString('<p class="text-gray-500">Nenhum registro encontrado.</p>');
+                        }
 
                         $ocorrenciaId = $get('tarefa_ocorrencia_id');
-                        $realizacoes = $tarefa->realizacoes
-                            ->when($ocorrenciaId, fn ($q) => $q->where('tarefa_ocorrencia_id', $ocorrenciaId))
-                            ->sortBy('created_at');
-                        foreach ($realizacoes as $realizacao) {
-                            $nome = e($realizacao->user?->name ?? 'Usuário removido');
-                            $data = $realizacao->created_at?->format('d/m/Y H:i') ?? '';
-                            $comentario = e($realizacao->comentario);
 
-                            $html .= '<div class="border-l-4 border-blue-400 bg-blue-50 dark:bg-blue-950 dark:border-blue-600 rounded-r-lg p-3">';
-                            $html .= '<div class="flex items-center gap-2 mb-1">';
-                            $html .= '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">Enviado</span>';
-                            $html .= '<span class="text-sm font-medium text-gray-900 dark:text-white">' . $nome . '</span>';
-                            $html .= '<span class="text-xs text-gray-500 dark:text-gray-400">' . $data . '</span>';
-                            $html .= '</div>';
-                            $html .= '<p class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">' . $comentario . '</p>';
-                            $html .= '</div>';
-                        }
-
-                        $observacoes = $tarefa->observacoes;
-                        if ($ocorrenciaId) {
-                            $observacoes = $tarefa->ocorrencias->firstWhere('id', (int) $ocorrenciaId)?->observacoes;
-                        }
-
-                        if ($observacoes) {
-                            $linhas = array_filter(explode("\n", $observacoes));
-                            foreach ($linhas as $linha) {
-                                $linha = trim($linha);
-                                if (empty($linha)) continue;
-
-                                if (str_starts_with($linha, '[Devolvido por ') || str_starts_with($linha, '[Rejeitado por ')) {
-                                    $html .= '<div class="border-l-4 border-red-400 bg-red-50 dark:bg-red-950 dark:border-red-600 rounded-r-lg p-3">';
-                                    $html .= '<div class="flex items-center gap-2 mb-1">';
-                                    $html .= '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300">Devolvido</span>';
-                                    $html .= '</div>';
-                                    $html .= '<p class="text-sm text-gray-700 dark:text-gray-300">' . e($linha) . '</p>';
-                                    $html .= '</div>';
-                                } elseif (str_starts_with($linha, '[Aprovado com ressalvas por ')) {
-                                    $html .= '<div class="border-l-4 border-green-400 bg-green-50 dark:bg-green-950 dark:border-green-600 rounded-r-lg p-3">';
-                                    $html .= '<div class="flex items-center gap-2 mb-1">';
-                                    $html .= '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">Validado com ressalva</span>';
-                                    $html .= '</div>';
-                                    $html .= '<p class="text-sm text-gray-700 dark:text-gray-300">' . e($linha) . '</p>';
-                                    $html .= '</div>';
-                                } elseif (str_starts_with($linha, '[Validado por ') || str_starts_with($linha, '[Validação]')) {
-                                    $html .= '<div class="border-l-4 border-green-400 bg-green-50 dark:bg-green-950 dark:border-green-600 rounded-r-lg p-3">';
-                                    $html .= '<div class="flex items-center gap-2 mb-1">';
-                                    $html .= '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">Aprovado</span>';
-                                    $html .= '</div>';
-                                    $html .= '<p class="text-sm text-gray-700 dark:text-gray-300">' . e($linha) . '</p>';
-                                    $html .= '</div>';
-                                } else {
-                                    $html .= '<div class="border-l-4 border-gray-300 bg-gray-50 dark:bg-gray-900 dark:border-gray-600 rounded-r-lg p-3">';
-                                    $html .= '<p class="text-sm text-gray-700 dark:text-gray-300">' . e($linha) . '</p>';
-                                    $html .= '</div>';
-                                }
-                            }
-                        }
-
-                        $validadoPor = $tarefa->validadoPorUser;
-                        $validadoEm = $tarefa->validado_em;
-                        $statusValidacao = $tarefa->status;
-                        if ($ocorrenciaId) {
-                            $oc = $tarefa->ocorrencias->firstWhere('id', (int) $ocorrenciaId);
-                            $validadoPor = $oc?->validadoPorUser;
-                            $validadoEm = $oc?->validado_em;
-                            $statusValidacao = $oc?->status;
-                        }
-
-                        if ($validadoPor && $validadoEm) {
-                            $html .= '<div class="border-l-4 border-green-400 bg-green-50 dark:bg-green-950 dark:border-green-600 rounded-r-lg p-3">';
-                            $html .= '<div class="flex items-center gap-2">';
-                            $html .= '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">'
-                                . ($statusValidacao === 'com_ressalvas' ? 'Validado com ressalva' : 'Validado') . '</span>';
-                            $html .= '<span class="text-sm font-medium text-gray-900 dark:text-white">' . e($validadoPor->name) . '</span>';
-                            $html .= '<span class="text-xs text-gray-500 dark:text-gray-400">' . $validadoEm->format('d/m/Y H:i') . '</span>';
-                            $html .= '</div>';
-                            $html .= '</div>';
-                        }
-
-                        if ($realizacoes->isEmpty() && !$observacoes && !$validadoPor) {
-                            $html .= '<p class="text-gray-500 dark:text-gray-400 text-center py-4">Nenhum registro no histórico.</p>';
-                        }
-
-                        $html .= '</div>';
-                        return new HtmlString($html);
+                        return TarefaHistoricoService::renderizarHistorico(
+                            $tarefa,
+                            $ocorrenciaId ? (int) $ocorrenciaId : null,
+                        );
                     }),
             ])
             ->fillForm(fn (array $arguments) => [

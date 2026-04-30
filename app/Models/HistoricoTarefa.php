@@ -13,6 +13,7 @@ class HistoricoTarefa extends Model
 
     protected $fillable = [
         'tarefa_id',
+        'tarefa_ocorrencia_id',
         'user_id',
         'status_anterior',
         'status_novo',
@@ -30,6 +31,11 @@ class HistoricoTarefa extends Model
     public function tarefa(): BelongsTo
     {
         return $this->belongsTo(Tarefa::class);
+    }
+
+    public function ocorrencia(): BelongsTo
+    {
+        return $this->belongsTo(TarefaOcorrencia::class, 'tarefa_ocorrencia_id');
     }
 
     public function user(): BelongsTo

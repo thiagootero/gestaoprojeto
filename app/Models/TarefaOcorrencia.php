@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class TarefaOcorrencia extends Model
 {
@@ -75,5 +76,10 @@ class TarefaOcorrencia extends Model
     public function tarefa(): BelongsTo
     {
         return $this->belongsTo(Tarefa::class);
+    }
+
+    public function historicoTarefas(): HasMany
+    {
+        return $this->hasMany(HistoricoTarefa::class, 'tarefa_ocorrencia_id')->orderByDesc('created_at');
     }
 }

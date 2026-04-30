@@ -6,6 +6,7 @@ use App\Models\Tarefa;
 use App\Notifications\TarefaAprovada;
 use App\Notifications\TarefaDevolvida;
 use App\Support\NotificacaoCentral;
+use App\Support\TarefaHistoricoService;
 use Filament\Forms;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -113,6 +114,7 @@ class TarefasEmAnalise extends BaseWidget
                     })
                     ->action(function (Tarefa $record, array $data) {
                         $user = auth()->user();
+                        $statusAnterior = $record->status;
 
                         if (in_array($data['decisao'], ['aprovar', 'aprovar_ressalva'], true)) {
                             $status = $data['decisao'] === 'aprovar_ressalva' ? 'com_ressalvas' : 'realizado';
@@ -132,6 +134,14 @@ class TarefasEmAnalise extends BaseWidget
                                 ]);
                             }
 
+                            TarefaHistoricoService::registrarMovimentacao(
+                                $record,
+                                $user,
+                                $statusAnterior,
+                                $status,
+                                $data['observacao'] ?? null,
+                            );
+
                             $enviadoPor = NotificacaoCentral::ultimoEnvioTarefa($record);
                             if ($enviadoPor && $enviadoPor->id !== $user->id) {
                                 $enviadoPor->notify(new TarefaAprovada($record, $user));
@@ -145,6 +155,14 @@ class TarefasEmAnalise extends BaseWidget
                                 'validado_em' => null,
                                 'observacoes' => ($obs ? $obs . "\n" : '') . '[Devolvido por ' . $user->name . '] ' . $data['motivo'],
                             ]);
+
+                            TarefaHistoricoService::registrarMovimentacao(
+                                $record,
+                                $user,
+                                $statusAnterior,
+                                'devolvido',
+                                $data['motivo'],
+                            );
 
                             $enviadoPor = NotificacaoCentral::ultimoEnvioTarefa($record);
                             if ($enviadoPor && $enviadoPor->id !== $user->id) {
